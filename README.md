@@ -1,7 +1,5 @@
 # ai-defense-cli
 
-[![release](https://img.shields.io/github/v/release/cisco-ai-defense/ai-defense-cli?label=version)](https://github.com/cisco-ai-defense/ai-defense-cli/releases)
-
 **Cisco AI Defense CLI** (`aid-cisco-cli`) — command-line tool for AI Defense
 scanning and inventory: **model-scan**, **mcp-scan**, and **ai-bom**. Deterministic
 exit codes and machine-readable output for CI/CD.
@@ -16,7 +14,7 @@ exit codes and machine-readable output for CI/CD.
 
 ## Installation
 
-- **Users:** [docs/install-upgrade.md](docs/install-upgrade.md) — download binaries, verify checksums, upgrade
+- **Users:** [GitHub Releases](https://github.com/cisco-ai-defense/ai-defense-cli/releases) · [install-upgrade.md](docs/install-upgrade.md) — download binaries, verify checksums, upgrade
 - **Developers:** [docs/getting-started-developer.md](docs/getting-started-developer.md) — build from source
 
 Quick build from source:

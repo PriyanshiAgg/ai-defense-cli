@@ -69,7 +69,8 @@ Update as needed:
 | Architecture | `docs/architecture/ai-defense-cli.md`, optional ADR in `docs/adr/` |
 
 **README:** evergreen only — what it does, install, quick start, doc links. No version
-tables or PR status (use GitHub Releases badge + `CHANGELOG.md`). Project status → `CONTEXT.md`.
+tables or PR status; link to GitHub Releases (shields.io badges do not work on internal
+repos). Project status → `CONTEXT.md`.
 
 ---
 
