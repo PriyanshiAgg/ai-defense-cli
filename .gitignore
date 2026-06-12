@@ -1,0 +1,46 @@
+# Binaries
+aid-cisco-cli
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+*.test
+*.out
+coverage.out
+vendor/
+
+# Python (embedded AIBOM analyzer)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets and local config
+.env
+.env*
+!.env.example
+*.local.toml
+
+# Build artifacts
+.build/
+internal/embedded/python/bundle/
+internal/embedded/python/bin/
+*.log
+
+# Review artifacts (optional local only)
+canvases/
+
+# Cursor — local agent plans (not team-shared)
+.cursor/plans/

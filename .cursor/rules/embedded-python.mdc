@@ -1,0 +1,44 @@
+---
+description: Embedded relocatable CPython and AIBOM Python bundle
+globs: "{internal/embedded/**/*.go,internal/embedded/**/*.py,scripts/**/*.py,scripts/**/*.txt,**/requirements*.txt,Dockerfile*,Makefile}"
+alwaysApply: false
+---
+
+# Embedded Python (AIBOM)
+
+The CLI is primarily Go but **embeds a relocatable CPython runtime** and packaged
+`cisco-aibom` for local `ai-bom analyze` — not a system Python dependency.
+
+## Layout (post-migration)
+
+| Path | Role |
+|------|------|
+| `internal/embedded/python/` | `embed.go`, build tags, Go↔Python bridge |
+| `internal/embedded/python/stub.go` | Stub build when embed disabled (CI/dev without bundle) |
+| `scripts/` | Bundle scripts, `requirements-bundle.txt` |
+| `Dockerfile` | Multi-stage: build CPython bundle + Go binary |
+
+## Build tags
+
+- **Full embed** — production/release binary with bundled interpreter + aibom
+- **Stub** — `go test` / dev without downloading full CPython payload; tests must cover stub path
+
+Do not break `go test ./...` on machines without the full Python bundle unless stub tag is default for tests.
+
+## Python hygiene
+
+- Pin versions in `requirements-bundle.txt` (or equivalent); no unpinned installs in release path
+- `__pycache__/`, `.venv/`, and `internal/embedded/python/bundle/` are gitignored — never commit bundles
+- Avoid `pickle` / unsafe deserialization; JSON and vetted aibom APIs only
+- Do not shell out to arbitrary user Python; use only the embedded relocatable runtime
+
+## Release impact
+
+- Release artifacts must include the embedded runtime (single binary or documented layout)
+- CI must build **both** stub (fast tests) and full embed (release smoke) where applicable
+- Document platform support for embedded CPython (linux/darwin, amd64/arm64)
+
+## References
+
+- `docs/architecture/ai-defense-cli.md` — embedded Python section
+- Release persona: `.github/prompts/persona-release.md`

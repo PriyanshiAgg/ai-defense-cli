@@ -1,0 +1,40 @@
+---
+description: AI Defense CLI project context, commands, and agent workflow
+alwaysApply: true
+---
+
+# ai-defense-cli
+
+Public Go CLI (`aid-cisco-cli`) for Cisco AI Defense: `model-scan`, `mcp-scan`, `ai-bom`.
+No UI, database, or backend services in this repo.
+
+## Stack
+
+- **Go** — Cobra commands, HTTP SDK client, exit-code contract
+- **Embedded Python** — relocatable CPython + packaged `cisco-aibom` for local AIBOM analysis (`internal/embedded/python/`)
+
+## Commands
+
+```bash
+make build-go              # Go only (stub python)
+make bundle build-embed    # Go + embedded CPython/aibom
+make test vet
+```
+
+`BUILD_MODE=go|full` on `make build`. See `Makefile` and `scripts/README.md`.
+
+## Agent workflow
+
+- **Plan first** for migrations and contract changes (use Plan Mode or `spec-driven-dev` skill)
+- **Rules** = always-on conventions (this file + go / python rules)
+- **Skills** = on-demand workflows in `.cursor/skills/` (`spec-driven-dev`, `pr-review`, `debug-and-fix`)
+- **Plans** — local only under `.cursor/plans/` (gitignored; do not commit)
+- Read `CONTEXT.md` for migration status before large changes
+
+## Conventions
+
+- Feature branches off `main`; avoid direct commits to `main`
+- Config resolution: flags > env > TOML
+- Exit codes: see `internal/clierror` and `docs/architecture/ai-defense-cli.md`
+- Never hardcode or log API keys
+- Minimize diff scope; match existing patterns in `cmd/`, `internal/`, `sdk/`

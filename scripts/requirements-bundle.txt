@@ -1,0 +1,6 @@
+# Pinned Python deps for the embedded aid-py bundle.
+# Installed into relocatable CPython (python-build-standalone), then tarred and
+# embedded in the Go CLI via //go:build embed_python.
+#
+# Bump in sync with aibom release notes when upgrading analyzer versions.
+cisco-aibom[all]==1.0.0rc4

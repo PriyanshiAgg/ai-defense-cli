@@ -1,0 +1,42 @@
+---
+description: Go CLI code — commands, SDK, exit codes, errors
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go CLI
+
+## Layout
+
+| Path | Role |
+|------|------|
+| `cmd/` | Cobra command groups |
+| `internal/clierror` | Exit-code contract (ops 1–5, policy 10/20) |
+| `internal/verdict` | Scan result envelope |
+| `internal/cmdutil` | `--fail-on`, `--block-on`, `--output`, `--raw` |
+| `internal/config` | Auth and endpoint (flags > env > TOML) |
+| `internal/embedded/python` | Go ↔ embedded CPython bridge (see embedded-python rule) |
+| `sdk/aidefense/` | HTTP client — extend, don't duplicate |
+
+## Quality gates
+
+Run after Go changes:
+
+```bash
+go build ./...
+go vet ./...
+go test ./...
+```
+
+## Patterns
+
+- Propagate errors; map to `internal/clierror` at command boundary — no magic `os.Exit` in libraries
+- Table-driven tests for flags, exit codes, and JSON output shape
+- HTTP client: timeouts on all outbound calls; validate user-supplied URLs before fetch
+- Use build tags where needed (`stub` vs full embed for Python); document tag matrix in comments or docs
+- No `shared/pkg` — this is a standalone repo
+
+## References
+
+- Architecture: `docs/architecture/ai-defense-cli.md`
+- Debug workflow: `.cursor/skills/debug-and-fix/SKILL.md`
