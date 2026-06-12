@@ -1,16 +1,10 @@
 # ai-defense-cli
 
-**Cisco AI Defense CLI** (`aid-cisco-cli`)
+[![release](https://img.shields.io/github/v/release/cisco-ai-defense/ai-defense-cli?label=version)](https://github.com/cisco-ai-defense/ai-defense-cli/releases)
 
-Command-line tool for AI Defense scanning and inventory: **model-scan**, **mcp-scan**, and **ai-bom**. Deterministic exit codes and machine-readable output for CI/CD.
-
-## Status
-
-| Area | Status |
-|------|--------|
-| CLI source | In review ([PR #1](https://github.com/cisco-ai-defense/ai-defense-cli/pull/1)) |
-| Multi-platform CI | Active on PRs and `main` |
-| Install docs | [install-upgrade.md](docs/install-upgrade.md) |
+**Cisco AI Defense CLI** (`aid-cisco-cli`) — command-line tool for AI Defense
+scanning and inventory: **model-scan**, **mcp-scan**, and **ai-bom**. Deterministic
+exit codes and machine-readable output for CI/CD.
 
 ## Features
 
@@ -18,7 +12,7 @@ Command-line tool for AI Defense scanning and inventory: **model-scan**, **mcp-s
 - **mcp-scan** — MCP server registration and scanning
 - **ai-bom** — AI Bill of Materials (embedded `cisco-aibom` analyzer)
 - **Exit codes** — operational (1–5) vs policy verdicts (10, 20)
-- **CI output** — JSON verdict envelope, `--fail-on` / `--block-on`
+- **CI output** — raw API JSON by default; `--envelope` + `--fail-on` / `--block-on`
 
 ## Installation
 
@@ -43,15 +37,8 @@ export AI_DEFENSE_BASE_URL="https://us.api.aidefense.security.cisco.com"
 ./bin/aid-cisco-cli model-scan list --limit 5
 ```
 
-## Repository layout
-
-```
-api/                 # HTTP client (importable)
-internal/cli/        # Cobra commands
-internal/            # config, exit codes, verdict, embedded Python
-scripts/             # Python bundle build
-docs/                # specs, architecture, guides
-```
+See [docs/getting-started-client.md](docs/getting-started-client.md) for the full command
+reference, output modes, and exit-code gating.
 
 ## Development
 
@@ -62,10 +49,5 @@ make build-release-darwin        # macOS release → dist/
 make build-release-linux GOARCH=amd64   # Linux release via Docker
 ```
 
-See [docs/getting-started-developer.md](docs/getting-started-developer.md).
-
-## Contributing
-
-[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [LICENSE](LICENSE)
-
-Full command reference: [docs/getting-started-client.md](docs/getting-started-client.md) · [docs/service-spec.md](docs/service-spec.md)
+Details: [docs/getting-started-developer.md](docs/getting-started-developer.md) ·
+[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md)

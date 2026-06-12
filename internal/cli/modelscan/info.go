@@ -21,8 +21,8 @@ func newInfoCmd(cli *cmdutil.CLI) *cobra.Command {
 		Short: "Get detailed information about a specific scan",
 		Long: `Retrieve scan status, scanned files, detected threats, and severity breakdown.
 
-Prints a normalized verdict envelope and applies the same exit-code contract as
-'trigger' for completed scans (0 pass, 10 fail, 20 block; 5 if the scan failed).
+Prints raw API JSON by default. Use --envelope for the normalized verdict and
+the same exit-code contract as 'trigger' (0 pass, 10 fail, 20 block; 5 if failed).
 
 Examples:
   aid-cisco-cli model-scan info --scan-id <uuid>
@@ -40,17 +40,17 @@ Examples:
 			config := api.NewConfig(baseURL)
 			client := modelscansdk.NewClient(apiKey, config)
 
-			resp, err := client.GetScan(scanID, &modelscansdk.GetScanStatusRequest{
+			req := &modelscansdk.GetScanStatusRequest{
 				FileLimit:  limit,
 				FileOffset: offset,
-			})
+			}
+			raw, err := client.GetScanRaw(scanID, req)
 			if err != nil {
 				return err
 			}
-
-			raw, err := json.Marshal(resp)
-			if err != nil {
-				return clierror.Unexpected("failed to render scan result", err)
+			var resp modelscansdk.GetScanStatusResponse
+			if err := json.Unmarshal(raw, &resp); err != nil {
+				return clierror.Unexpected("failed to parse scan result", err)
 			}
 			return emitScanResult(resp.ScanStatusInfo, raw, resultOpts)
 		},

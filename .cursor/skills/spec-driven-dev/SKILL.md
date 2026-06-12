@@ -63,10 +63,13 @@ Update as needed:
 
 | Change | Update |
 |--------|--------|
-| New command or flag | `docs/specs/`, `README.md`, `CHANGELOG.md` |
-| Exit code or JSON output | `docs/specs/`, `docs/architecture/ai-defense-cli.md` |
+| New command or flag | `docs/specs/`, `README.md` (Features if user-facing), `CHANGELOG.md` |
+| Exit code or JSON output | `docs/specs/`, `docs/architecture/ai-defense-cli.md`, `docs/getting-started-client.md` |
 | Release/install | `docs/install-upgrade.md`, workflow comments |
 | Architecture | `docs/architecture/ai-defense-cli.md`, optional ADR in `docs/adr/` |
+
+**README:** evergreen only — what it does, install, quick start, doc links. No version
+tables or PR status (use GitHub Releases badge + `CHANGELOG.md`). Project status → `CONTEXT.md`.
 
 ---
 
