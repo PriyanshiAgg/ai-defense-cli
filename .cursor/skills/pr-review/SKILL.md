@@ -7,6 +7,10 @@ description: Multi-persona branch review for ai-defense-cli before opening or me
 
 Review a local branch against a target (default `main`) before merge.
 
+**GitHub PRs:** `.github/workflows/pr-persona-review.yml` posts the same persona
+synthesis as an **advisory PR comment only** (read-only — no auto-commits). Requires
+repo secret `PERSONA_REVIEW_API_KEY`.
+
 ## Personas
 
 Read `.github/prompts/system.md` plus each persona file:
@@ -65,7 +69,7 @@ git commit -m "fix(review): address PR review findings"
 
 ## Report location
 
-`reviews/{branch-short-name}-review.md`
+`reviews/{branch-short-name}-review.md` (gitignored — local only, do not commit)
 
 Optional: render a canvas if the user wants a visual report (see Cursor canvas skill).
 

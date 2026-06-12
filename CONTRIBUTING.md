@@ -42,6 +42,41 @@ We expect new pull requests to include tests for any affected behavior, and, as
 we follow semantic versioning, we may reserve breaking changes until the next
 major version release.
 
+### Merge requirements (`main`)
+
+Pull requests must pass all **required** CI checks before merge:
+
+| Check | What it validates |
+|-------|-------------------|
+| `test` | `make build-go test vet` |
+| `linux-amd64` | Full embed release binary (Docker) + `--version` smoke test |
+| `darwin-arm64` / `darwin-amd64` | Full embed release binary (macOS) + `--version` smoke test |
+
+The `checksums` job runs only on **push to `main` or `release/*`** (when artifacts are
+published). It does not run on pull requests.
+
+**Branch protection (repo admins):** Required PR checks should be exactly the four jobs
+above (`test` + three platform embed builds). Do **not** require `meta` (removed),
+`linux-arm64` (not published), or `checksums` (main/release push only).
+
+**CI artifacts** (versioned binaries + `checksums.txt` + `manifest.json`) are uploaded
+only from `main` and `release/*` pushes, not from pull requests. PRs still run full
+embed builds to catch breaking changes.
+
+### Versioning and releases
+
+- **Source of truth:** [`VERSION`](VERSION) at repo root (semver, e.g. `0.1.0`).
+- **Local builds:** `make version` prints `VERSION` and `COMMIT`; embedded via `-ldflags`.
+- **Release binaries:** `dist/aid-cisco-cli-<version>-<os>-<arch>`.
+- **Cut a release:** bump `VERSION` and `CHANGELOG.md`, merge to `main`, then push tag `v0.1.0`.
+  The [Release workflow](.github/workflows/release.yml) builds all platforms and publishes
+  a GitHub Release with assets.
+
+**PR Persona Review** is advisory (optional); it does not block merge.
+
+Branch protection on `main` enforces these checks. Repo admins can adjust them under
+**Settings → Branches → Branch protection rules**.
+
 ### Development setup
 
 ```bash
