@@ -80,7 +80,7 @@ embed builds to catch breaking changes.
 2. **Open PR manually** — use the **Create pull request** link in the workflow run summary
    (base = **`ref`**, compare = `release/vX.Y.Z`, title `chore(release): vX.Y.Z`).
 3. **Review + merge** the prepare PR.
-4. **Publish:** **Release on merge** pushes `vX.Y.Z` automatically → **Release** workflow publishes binaries and GitHub Release assets.
+4. **Publish:** **Release on merge** pushes `vX.Y.Z` automatically → **Release** workflow publishes binaries and a GitHub Release whose notes come from the matching `CHANGELOG.md` section (not auto-generated PR lists).
 
 #### Release line (`release/0.1.x`) and cherry-picks
 

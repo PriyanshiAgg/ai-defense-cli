@@ -151,12 +151,18 @@ jobs:
       - name: Generate checksums.txt and manifest.json
         run: make checksums manifest VERSION="$VERSION" COMMIT="$COMMIT"
 
+      - name: Extract release notes from CHANGELOG
+        run: |
+          python3 scripts/extract-changelog-section.py \
+            --version "$VERSION" \
+            -o release-notes.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.test.outputs.tag }}
           name: ${{ needs.test.outputs.tag }}
-          generate_release_notes: true
+          body_path: release-notes.md
           files: |
             dist/aid-cisco-cli-${{ needs.test.outputs.version }}-linux-amd64
             dist/aid-cisco-cli-${{ needs.test.outputs.version }}-darwin-amd64

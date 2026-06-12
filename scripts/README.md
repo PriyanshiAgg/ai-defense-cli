@@ -38,6 +38,7 @@ make bundle && make build-embed # Full CLI with cisco-aibom
 |--------|------|
 | `autofill-changelog.py` | Add missing `[Unreleased]` bullets from merged PRs since last `v*` tag |
 | `prepare-release.sh` | Bump `VERSION` and finalize CHANGELOG section |
+| `extract-changelog-section.py` | Extract `## [VERSION]` body for GitHub Release notes |
 | `validate-release-tag.sh` | Shared validation before pushing `v*` tags |
 | `generate-release-manifest.sh` | Build `manifest.json` for release artifacts |
 
