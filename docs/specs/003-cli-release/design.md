@@ -6,7 +6,7 @@
 |----------|---------|---------|
 | **Prepare release** | `workflow_dispatch` | Autofill → bump VERSION → finalize CHANGELOG → push `release/vX.Y.Z` |
 | **Release on merge** | `release/v*` PR merged to `main` or `release/**` | Push `vX.Y.Z` tag |
-| **Release** | Push tag `v*` | Embed builds, checksums, manifest, GitHub Release |
+| **Release** | Push tag `v*` | Embed builds, checksums, manifest, GitHub Release (title = tag, e.g. `v0.1.1`) |
 | **Create release tag** | `workflow_dispatch` | Manual/dry-run tag (escape hatch) |
 
 ```mermaid
