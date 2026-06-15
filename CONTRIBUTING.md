@@ -48,7 +48,7 @@ Pull requests must pass all **required** CI checks before merge:
 
 | Check | What it validates |
 |-------|-------------------|
-| `test` | `make build-go test vet` |
+| `test` | `make build-go test-cover-check vet` (minimum Go coverage enforced) |
 | `linux-amd64` | Full embed release binary (Docker) + smoke test (`--version`, all `--help`) |
 | `darwin-arm64` / `darwin-amd64` | Full embed release binary (macOS) + smoke test |
 
@@ -114,7 +114,14 @@ Branch protection on `main` enforces these checks. Repo admins can adjust them u
 git clone https://github.com/cisco-ai-defense/ai-defense-cli.git
 cd ai-defense-cli
 make build-go test vet
+make test-cover        # coverage profile + summary
+make test-cover-check  # enforce COVER_MIN (default 75%)
 ```
+
+Coverage gate scope (`make test-cover` / `test-cover-check`) excludes `scripts/`, `main`,
+test helpers, and TUI/onboarding packages (`install`, `onboard`, `config`, `internal/tui`,
+`internal/selfupdate`, `internal/config/spec`) until they have unit tests. `make test`
+still runs `./...`.
 
 **Build modes:**
 
