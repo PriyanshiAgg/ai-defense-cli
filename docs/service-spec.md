@@ -12,9 +12,19 @@ aid-cisco-cli [global flags] <command> <subcommand> [flags]
 Global Flags:
   --api-key string    API key (env: AI_DEFENSE_API_KEY)
   --base-url string   Base URL (env: AI_DEFENSE_BASE_URL)
+  --profile string    Config profile (env: AI_DEFENSE_PROFILE)
   --version           Print version
 
 Commands:
+  install             Download and install a release build (self-update)
+  onboard             Interactive setup for new users
+  config              Manage CLI configuration
+    init              Create config interactively
+    edit              Edit existing config (TTY)
+    show              Show config (TTY browser or redacted TOML)
+    path              Print active config file path
+    validate          Validate required fields
+    profile           List, switch, create, and delete named profiles
   model-scan          Scan AI/ML models for security vulnerabilities
     trigger           Submit a model file or repo URL for cloud scanning
     list              List previous scans
@@ -49,8 +59,11 @@ Priority (highest to lowest):
 3. TOML config file
 
 Config file search order:
-- `AI_DEFENSE_CONFIG_PATH` environment variable
-- `.config.toml` in the current working directory
+- `AI_DEFENSE_CONFIG_PATH` environment variable (if set; bypasses profiles)
+- Active profile config (`~/.ai-defense/config.toml` for `default`, or `~/.ai-defense/profiles/<name>.toml`)
+- Legacy (only when active profile is `default`): cwd `.config.toml`, then XDG path
+
+Active profile: `~/.ai-defense/profile`, or `--profile` / `AI_DEFENSE_PROFILE`.
 
 ### Config File Format
 
@@ -61,7 +74,26 @@ base_url = "https://us.api.aidefense.security.cisco.com"
 
 [default.huggingface]
 token = "hf_xxx"
+
+[default.aibom]
+llm_model = "gpt-5.4"
+llm_provider = ""
+llm_api_key = "..."
+llm_api_base = ""
+llm_api_version = ""
 ```
+
+Optional sections (`huggingface`, `aibom`) are omitted when not configured via
+`aid-cisco-cli onboard` / `config init`. Wizard progress is stored under `[onboard]` (not read at runtime).
+
+### Config commands (TTY)
+
+| Command | TTY behavior |
+|---------|----------------|
+| `config show` | Section browser; `--plain` prints redacted TOML |
+| `config edit` | Menu: core API, each capability, Done |
+| `onboard` / `config init` | Step-by-step wizard with draft save per field (`--profile`) |
+| `config profile` | `list`, `current`, `use`, `create`, `delete` |
 
 ## Base URL Validation
 
@@ -71,8 +103,17 @@ The CLI validates that the base URL hostname ends with `.cisco.com`. Other domai
 
 | Code | Meaning |
 |------|---------|
-| 0    | Success |
-| 1    | Error (auth failure, API error, validation error, etc.) |
+| 0 | Success |
+| 1 | Unexpected error |
+| 2 | Usage error (bad flags/args; non-TTY wizard; unsupported install platform) |
+| 3 | Auth/config error (missing API key, invalid base URL) |
+| 4 | Connectivity/timeout (install download, API network) |
+| 5 | Scan failed |
+| 10 | Policy fail (`--fail-on`) |
+| 20 | Policy block (`--block-on`) |
+
+`install` and `config validate` follow the same mapping (see specs 005 and 006).
+See [architecture/ai-defense-cli.md](architecture/ai-defense-cli.md) and [spec 001](specs/001-cli-core/design.md).
 
 ## Environment Variables
 
@@ -98,9 +139,7 @@ The CLI validates that the base URL hostname ends with `.cisco.com`. Other domai
 `cisco-aibom` analyzer, whose `analyze` command requires an LLM to classify
 scanner candidates. Therefore:
 
-- `--llm-model` (or `AIBOM_LLM_MODEL`) is **required** — the CLI fails fast with a
-  clear error if it is missing (matching the analyzer, which also rejects a run
-  without a model).
+- `--llm-model` (or `AIBOM_LLM_MODEL`, or `[default.aibom].llm_model` in config) is **required**
 - A resolvable credential for the model is required, and the CLI fails fast if
   none is found: `--llm-api-key` / `AIBOM_LLM_API_KEY` (OpenAI, Azure, Anthropic,
   Google), the provider's native credential chain (e.g. AWS credentials for

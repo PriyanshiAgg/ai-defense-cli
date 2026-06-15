@@ -14,6 +14,29 @@ This guide gets you from zero to your first scan with `aid-cisco-cli`. It is for
 
 ---
 
+## 0. Onboarding (recommended)
+
+After installing the binary, run the interactive wizard:
+
+```bash
+aid-cisco-cli onboard
+```
+
+You'll configure:
+
+1. **Core** — choose profile (or use `--profile`); then base URL and API key
+2. **Optional capabilities** — HuggingFace and AIBOM, one at a time (Configure or Skip). Progress is saved after each field; run `onboard` again to continue or start over. Re-run shows existing profiles and which is active (`*`).
+
+Settings are saved to **`~/.ai-defense/`** — default profile in `config.toml`, or named profiles under `profiles/` (see [config.md](config.md#where-settings-live)).
+
+Add or change settings later with `aid-cisco-cli config edit` (section menu). Inspect with
+`aid-cisco-cli config show` on a terminal, or `config show --plain` for redacted TOML.
+
+Non-interactive environments: set `AI_DEFENSE_API_KEY` / `AI_DEFENSE_BASE_URL` or
+create `~/.ai-defense/config.toml` manually (see §2 below).
+
+---
+
 ## 1. Get the binary
 
 Release builds ship a **single self-contained binary** per OS/architecture. The
@@ -87,8 +110,7 @@ export AI_DEFENSE_BASE_URL="https://us.api.aidefense.security.cisco.com"
 ./aid-cisco-cli model-scan list
 ```
 
-**3. TOML config file** (`.config.toml` in the working directory, or point
-`AI_DEFENSE_CONFIG_PATH` at it):
+**3. TOML config file** (`~/.ai-defense/config.toml`, or set `AI_DEFENSE_CONFIG_PATH`):
 
 ```toml
 [default]
