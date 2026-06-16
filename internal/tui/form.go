@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"errors"
 	"os"
 	"sync"
 
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
@@ -36,6 +39,36 @@ func NewForm(groups ...*huh.Group) *huh.Form {
 // RunForm executes a styled form.
 func RunForm(groups ...*huh.Group) error {
 	return Run(NewForm(groups...))
+}
+
+// RunFormEscBack runs a form where esc returns ErrFormBack (previous wizard step).
+// Ctrl+C cancels the wizard (same as RunForm → NormalizeFormErr).
+func RunFormEscBack(groups ...*huh.Group) error {
+	var cancelled bool
+	km := huh.NewDefaultKeyMap()
+	km.Quit = key.NewBinding(
+		key.WithKeys("esc", "ctrl+c"),
+		key.WithHelp("esc", "back · ctrl+c cancel"),
+	)
+	form := NewForm(groups...).
+		WithKeyMap(km).
+		WithProgramOptions(tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
+			if k, ok := msg.(tea.KeyMsg); ok && k.Type == tea.KeyCtrlC {
+				cancelled = true
+			}
+			return msg
+		}))
+	err := form.Run()
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, huh.ErrUserAborted) {
+		if cancelled {
+			return NormalizeFormErr(huh.ErrUserAborted)
+		}
+		return ErrFormBack
+	}
+	return err
 }
 
 // Run executes a styled form and normalizes cancellation errors.

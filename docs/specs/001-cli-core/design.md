@@ -9,7 +9,7 @@
 
 | Group | Purpose |
 |-------|---------|
-| `model-scan` | Trigger and retrieve AI/ML model security scans |
+| `model-scan` | Trigger and retrieve AI/ML model security scans (`trigger`, `list`, `info`; `run` deprecated — usage error) |
 | `mcp-scan` | Register and scan MCP servers |
 | `ai-bom` | Generate and manage AI Bill of Materials (local analyzer via embedded Python) |
 
@@ -25,6 +25,8 @@
 | 5 | Scan operation failed |
 | 10 | Policy fail (`--fail-on`) |
 | 20 | Policy block (`--block-on`) |
+
+Per-command scenarios and remediation: [exit-codes-handbook.md](../../exit-codes-handbook.md).
 
 Scan commands emit raw API JSON on stdout by default (Python CLI parity).
 `--envelope` prints the normalized verdict (`--output json|text`); gating still applies.

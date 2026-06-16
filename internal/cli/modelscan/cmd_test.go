@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cisco-ai-defense/ai-defense-cli/internal/clierror"
+	"github.com/cisco-ai-defense/ai-defense-cli/internal/cliexitdoc"
 	"github.com/cisco-ai-defense/ai-defense-cli/internal/cmdutil"
 	"github.com/cisco-ai-defense/ai-defense-cli/internal/config"
 	"github.com/cisco-ai-defense/ai-defense-cli/internal/testutil/apitest"
@@ -102,5 +103,47 @@ func TestTriggerCmd_InvalidThreshold(t *testing.T) {
 	}
 	if code := clierror.Classify(err).Code; code != clierror.CodeUsage {
 		t.Fatalf("exit code = %d, want %d", code, clierror.CodeUsage)
+	}
+}
+
+func TestRunCmd_DeprecatedUsageError(t *testing.T) {
+	root := NewCmd(testCLI(t))
+	err := execCmd(t, root, "run")
+	if err == nil {
+		t.Fatal("expected usage error")
+	}
+	if code := clierror.Classify(err).Code; code != clierror.CodeUsage {
+		t.Fatalf("exit code = %d, want %d", code, clierror.CodeUsage)
+	}
+	if !strings.Contains(err.Error(), "deprecated") {
+		t.Fatalf("expected deprecation message, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "trigger") {
+		t.Fatalf("expected trigger hint, got %q", err.Error())
+	}
+}
+
+func TestModelScanCmd_UnknownSubcommand(t *testing.T) {
+	root := NewCmd(testCLI(t))
+	err := execCmd(t, root, "definitely-not-a-subcommand")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("expected unknown command error, got %q", err.Error())
+	}
+}
+
+func TestModelScanCmd_BareShowsHelp(t *testing.T) {
+	want, ok := cliexitdoc.ContractCode(cliexitdoc.ModelScanContract(), "No subcommand")
+	if !ok {
+		t.Fatal("registry missing bare model-scan row")
+	}
+	root := NewCmd(testCLI(t))
+	if err := execCmd(t, root); err != nil {
+		t.Fatalf("bare model-scan should show help: %v", err)
+	}
+	if want != 0 {
+		t.Fatalf("registry documents exit %d for bare parent; Cobra help returns nil (mapped to 0 at root)", want)
 	}
 }
