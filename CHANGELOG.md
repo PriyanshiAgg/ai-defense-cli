@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `aid-cisco-cli` are documented here. This project adheres
+All notable changes to `cisco-aid-cli` are documented here. This project adheres
 to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -20,6 +20,11 @@ to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### Changed
 
+- **Binary renamed** — `aid-cisco-cli` → **`cisco-aid-cli`** (command name, release
+  artifacts `cisco-aid-cli-<version>-<os>-<arch>`, install path). Update scripts and
+  CI invocations; see [§7.1](getting-started-client.md#71-renamed-from-aid-cisco-cli).
+  `cisco-aid-cli install --version` still downloads releases published as
+  `aid-cisco-cli-*` (through v0.1.3).
 - **`model-scan run`** — removed; exits with usage error (2) directing users to
   `model-scan trigger` (Python `aidcli` migration). Unknown `model-scan`
   subcommands continue to exit 2. Bare `model-scan` (no subcommand) still shows
