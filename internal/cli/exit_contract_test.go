@@ -152,13 +152,33 @@ func TestExitContract_McpScanRegister(t *testing.T) {
 	}
 }
 
-func TestExitContract_AibomGenerate(t *testing.T) {
+func TestExitContract_AibomInfoMissingID(t *testing.T) {
 	rows := cliexitdoc.AibomContract()
-	want, ok := cliexitdoc.ContractCode(rows, "Missing")
+	want, ok := cliexitdoc.ContractCode(rows, "Missing required id flag")
 	if !ok {
-		t.Fatal("registry missing ai-bom generate usage row")
+		t.Fatal("registry missing ai-bom info usage row")
 	}
-	if code := runWithArgs(t, "ai-bom", "generate"); code != want {
+	if code := runWithArgs(t, "ai-bom", "info"); code != want {
 		t.Fatalf("exit = %d, want %d", code, want)
+	}
+}
+
+func TestRunAibomBareShowsHelpExitOK(t *testing.T) {
+	// Bare `ai-bom` shows help and exits 0 (NoArgs + RunE: Help).
+	if code := runWithArgs(t, "ai-bom"); code != clierror.CodeOK {
+		t.Fatalf("bare ai-bom exit = %d, want %d", code, clierror.CodeOK)
+	}
+}
+
+func TestExitContract_AibomUnknownSubcommand(t *testing.T) {
+	// An unknown subcommand and the removed generate/submit/run commands must be
+	// usage errors (2), not a silent help/exit-0, so typos and stale invocations
+	// do not look successful.
+	for _, sub := range []string{"definitely-not-a-subcommand", "generate", "submit", "run"} {
+		t.Run(sub, func(t *testing.T) {
+			if code := runWithArgs(t, "ai-bom", sub); code != clierror.CodeUsage {
+				t.Fatalf("ai-bom %s exit = %d, want %d", sub, code, clierror.CodeUsage)
+			}
+		})
 	}
 }

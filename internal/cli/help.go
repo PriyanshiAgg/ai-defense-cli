@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
+
+	"github.com/cisco-ai-defense/ai-defense-cli/internal/cli/aibom"
 )
 
 // ANSI styles mirroring Typer/Rich's default help colors (what the embedded
@@ -24,6 +27,7 @@ const (
 	cType   = "\x1b[1;33m" // bold yellow
 	cUsage  = "\x1b[1;33m" // bold yellow
 	cBorder = "\x1b[2m"    // faint (matches Typer/Rich panel borders)
+	cError  = "\x1b[31m"   // red (matches Typer/Rich error-panel border + title)
 )
 
 // colorEnabled decides whether to emit ANSI for the given destination writer.
@@ -120,7 +124,15 @@ func renderHelp(cmd *cobra.Command, w io.Writer) string {
 
 // panel draws body inside a rounded, titled box of the given total width, with
 // the title spliced into the top border (╭─ Title ──...──╮) like Rich panels.
+// Borders use the faint style; for a differently colored frame (e.g. the red
+// error panel) use panelColored.
 func panel(color bool, title, body string, total int) string {
+	return panelColored(color, cBorder, title, body, total)
+}
+
+// panelColored is panel with an explicit border/title color (the title shares
+// the border color, matching Typer/Rich). The body text is left uncolored.
+func panelColored(color bool, frame, title, body string, total int) string {
 	inner := total - 4
 	if inner < 4 {
 		inner = 4
@@ -132,29 +144,67 @@ func panel(color bool, title, body string, total int) string {
 	if fill < 0 {
 		fill = 0
 	}
-	b.WriteString(paint(color, cBorder, prefix+strings.Repeat("─", fill)+"╮") + "\n")
+	b.WriteString(paint(color, frame, prefix+strings.Repeat("─", fill)+"╮") + "\n")
 
 	for _, line := range strings.Split(body, "\n") {
 		gap := inner - displayWidth(line)
 		if gap < 0 {
 			gap = 0
 		}
-		b.WriteString(paint(color, cBorder, "│") + " " + line +
-			strings.Repeat(" ", gap) + " " + paint(color, cBorder, "│") + "\n")
+		b.WriteString(paint(color, frame, "│") + " " + line +
+			strings.Repeat(" ", gap) + " " + paint(color, frame, "│") + "\n")
 	}
 
-	b.WriteString(paint(color, cBorder, "╰"+strings.Repeat("─", total-2)+"╯"))
+	b.WriteString(paint(color, frame, "╰"+strings.Repeat("─", total-2)+"╯"))
 	return b.String()
+}
+
+// renderError renders an aibom/Typer-style error block for a usage error: a red
+// "Error" panel wrapping msg, gated on w being a TTY. It is written before the
+// usual usage/help panels (see Run) so the message stands out and matches the
+// embedded analyzer's error styling.
+func renderError(msg string, w io.Writer) string {
+	color := colorEnabled(w)
+	total := helpWidth(w)
+	content := total - 4
+	if content < 10 {
+		content = 10
+	}
+	body := strings.Join(wrapText(msg, content), "\n")
+	return panelColored(color, cError, "Error", body, total) + "\n"
+}
+
+// orderedSubcommands returns the visible subcommands of cmd, sorted by the
+// optional aibom.HelpOrderAnnotation (a zero-padded index). Commands carrying it
+// come first in that order; the rest keep alphabetical order after them. This
+// lets ai-bom list analyzer passthroughs first (in the analyzer's order) and
+// aid_cli cloud commands last, while every other command stays alphabetical.
+func orderedSubcommands(cmd *cobra.Command) []*cobra.Command {
+	var out []*cobra.Command
+	for _, c := range cmd.Commands() {
+		if !c.IsAvailableCommand() || c.IsAdditionalHelpTopicCommand() {
+			continue
+		}
+		out = append(out, c)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return helpOrderKey(out[i]) < helpOrderKey(out[j])
+	})
+	return out
+}
+
+func helpOrderKey(c *cobra.Command) string {
+	if v := c.Annotations[aibom.HelpOrderAnnotation]; v != "" {
+		return "0:" + v
+	}
+	return "1:" + c.Name()
 }
 
 func commandsBody(color bool, cmd *cobra.Command, content int) string {
 	type row struct{ name, help string }
 	var rows []row
 	nameW := 0
-	for _, c := range cmd.Commands() {
-		if !c.IsAvailableCommand() || c.IsAdditionalHelpTopicCommand() {
-			continue
-		}
+	for _, c := range orderedSubcommands(cmd) {
 		rows = append(rows, row{c.Name(), c.Short})
 		nameW = maxi(nameW, len(c.Name()))
 	}
