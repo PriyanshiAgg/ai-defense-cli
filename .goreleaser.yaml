@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.17.1/www/docs/static/schema.json
+version: 2
+
+project_name: cisco-aid-cli
+
+# Release binaries are produced by target-native jobs and downloaded to dist/.
+# Keep GoReleaser's cleanable working directory separate from those inputs.
+dist: .goreleaser-dist
+
+# Importing prebuilt artifacts into the GoReleaser lifecycle is Pro-only.
+# The OSS hybrid publishes the verified fan-in artifacts as release extra files.
+builds:
+  - id: platform-builds
+    skip: true
+
+checksum:
+  disable: true
+
+# Curated notes are supplied with --release-notes.
+changelog:
+  disable: false
+
+release:
+  github:
+    owner: cisco-ai-defense
+    name: ai-defense-cli
+  name_template: "{{ .Tag }}"
+  mode: replace
+  make_latest: true
+  replace_existing_artifacts: true
+  extra_files:
+    - glob: "./dist/cisco-aid-cli-{{ .Version }}-linux-amd64"
+    - glob: "./dist/cisco-aid-cli-{{ .Version }}-darwin-amd64"
+    - glob: "./dist/cisco-aid-cli-{{ .Version }}-darwin-arm64"
+    - glob: ./dist/checksums.txt
+    - glob: ./dist/manifest.json

@@ -1,6 +1,6 @@
 # AI Defense CLI — Project Context
 
-Last updated: 2026-06-16
+Last updated: 2026-07-31
 
 ## Purpose
 
@@ -28,6 +28,10 @@ model-scan, mcp-scan, ai-bom with deterministic exit codes and release binaries.
 - [x] **Config/onboard wizard esc back-nav** — full step rewind (core fields + capability chain); Ctrl+C still cancels (`RunFormEscBack`)
 - [x] **Exit-code handbook** — `internal/cliexitdoc` registry + `make gen-exit-docs` → `docs/exit-codes-handbook.md`; CI `make check-exit-docs`; contract tests for `model-scan`, `config validate`, `mcp-scan`, `ai-bom`
 - [x] **Binary rename (ADR 0002)** — `aid-cisco-cli` → `cisco-aid-cli` (command + release artifacts); `install --version` falls back to legacy artifact names
+- [x] **GoReleaser OSS hybrid publisher (ADR 0003 / AIFW-30261)** — pinned
+  GoReleaser configuration validation in CI; GitHub Release publication through
+  `release.extra_files`; existing Docker/native embedded-Python builds,
+  checksums, manifest, curated notes, and self-update artifact names preserved
 - [x] **Coverage gate (PR #14)** — CI `make test-cover-check` (75% floor on scoped packages); `internal/testutil/apitest`; expanded command HTTP tests. TUI/onboarding packages excluded from gate until unit-tested.
 - [ ] **Diff coverage gate (PR #15, `feature/diff-coverage-gate`)** — PR CI `make test-diff-cover-check` (75% on changed production lines vs merge base); `internal/diffcover`, `cmd/check-diff-coverage`, REQ-09
 - [ ] **CodeQL advanced setup** — `.github/workflows/codeql.yml` (Go + Python); disable repo default setup; **requires org GitHub Code Security license** for SARIF upload on this internal repo
@@ -37,6 +41,9 @@ model-scan, mcp-scan, ai-bom with deterministic exit codes and release binaries.
 
 - macOS Developer ID signing + notarization in release CI
 - GitHub Actions SHA pinning (org policy)
+- End-to-end GoReleaser build/checksum ownership after embedded-Python parity is
+  proven; evaluate Pro split/merge or prebuilt import only if the OSS hybrid
+  publisher becomes insufficient
 - Unit tests for TUI/onboarding packages currently excluded from coverage gate (`install`, `onboard`, `config`, `internal/tui`, `internal/selfupdate`, `internal/config/spec`)
 - Exit registry phase-2: AST sync for implicit `Classify` paths (ADR 0001); TTY harness for `RunFormEscBack` esc vs ctrl+c
 - CI `fetch-depth: 0` on all events (needed for PR diff coverage merge-base; minor checkout cost on main pushes)

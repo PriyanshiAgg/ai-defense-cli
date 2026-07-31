@@ -6,6 +6,13 @@ to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### Changed
+
+- **Release publication now uses GoReleaser OSS** — the existing Docker/native
+  embedded-Python builds, artifact names, SHA-256 checksums, manifest, curated
+  release notes, and self-update contract are preserved while GoReleaser v2.17.1
+  creates and uploads the GitHub Release.
+
 ## [0.1.5] - 2026-06-19
 
 ### Added

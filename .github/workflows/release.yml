@@ -14,7 +14,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   DOCKER_BUILDKIT: "1"
@@ -29,6 +29,8 @@ jobs:
       tag: ${{ steps.v.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Resolve version from tag
         id: v
@@ -71,6 +73,8 @@ jobs:
       COMMIT: ${{ needs.test.outputs.commit }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.test.outputs.tag }}
 
       - uses: actions/setup-go@v6
         with:
@@ -100,6 +104,8 @@ jobs:
       COMMIT: ${{ needs.test.outputs.commit }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.test.outputs.tag }}
 
       - uses: actions/setup-go@v6
         with:
@@ -129,6 +135,8 @@ jobs:
       COMMIT: ${{ needs.test.outputs.commit }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.test.outputs.tag }}
 
       - uses: actions/setup-go@v6
         with:
@@ -153,11 +161,16 @@ jobs:
     name: release
     needs: [test, linux-amd64, build-darwin-arm64, build-darwin-amd64]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       VERSION: ${{ needs.test.outputs.version }}
       COMMIT: ${{ needs.test.outputs.commit }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.test.outputs.tag }}
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v8
         with:
@@ -172,17 +185,27 @@ jobs:
         run: |
           python3 scripts/extract-changelog-section.py \
             --version "$VERSION" \
-            -o release-notes.md
+            -o dist/release-notes.md
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Verify release inputs
+        run: |
+          for file in \
+            "dist/cisco-aid-cli-${VERSION}-linux-amd64" \
+            "dist/cisco-aid-cli-${VERSION}-darwin-amd64" \
+            "dist/cisco-aid-cli-${VERSION}-darwin-arm64" \
+            dist/checksums.txt \
+            dist/manifest.json \
+            dist/release-notes.md; do
+            test -f "$file" || {
+              echo "::error::Missing release input: $file"
+              exit 1
+            }
+          done
+
+      - name: Publish GitHub Release with GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
-          tag_name: ${{ needs.test.outputs.tag }}
-          name: ${{ needs.test.outputs.tag }}
-          body_path: release-notes.md
-          files: |
-            dist/cisco-aid-cli-${{ needs.test.outputs.version }}-linux-amd64
-            dist/cisco-aid-cli-${{ needs.test.outputs.version }}-darwin-amd64
-            dist/cisco-aid-cli-${{ needs.test.outputs.version }}-darwin-arm64
-            dist/checksums.txt
-            dist/manifest.json
+          version: v2.17.1
+          args: release --clean --release-notes dist/release-notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

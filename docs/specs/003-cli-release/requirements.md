@@ -59,3 +59,25 @@
 - **REQ-09.2** Default minimum diff coverage (`DIFF_COVER_MIN`) is **75%** of statements on changed production Go lines in scoped packages (same exclusions as REQ-08.3, plus `*_test.go`).
 - **REQ-09.3** `cmd/check-diff-coverage` reads `coverage.out` and the git diff; when no coverable production lines changed, the check MUST pass with a skip message.
 - **REQ-09.4** Checkout in CI MUST use `fetch-depth: 0` so merge-base is available on PRs.
+
+### REQ-10 — GoReleaser release publication
+
+- **REQ-10.1** CI MUST validate `.goreleaser.yaml` with the repository-pinned
+  GoReleaser version before release publication can be merged.
+- **REQ-10.2** GoReleaser OSS MUST publish only the reviewed fan-in artifacts:
+  `cisco-aid-cli-<version>-linux-amd64`,
+  `cisco-aid-cli-<version>-darwin-amd64`,
+  `cisco-aid-cli-<version>-darwin-arm64`, `checksums.txt`, and `manifest.json`.
+- **REQ-10.3** GoReleaser MUST use the existing curated
+  `CHANGELOG.md` version section as release notes; it MUST NOT silently replace it
+  with a commit-derived changelog.
+- **REQ-10.4** The GoReleaser working/dist directory MUST be separate from `dist/`
+  so `release --clean` cannot delete prebuilt artifacts before upload.
+- **REQ-10.5** The workflow MUST pin the GoReleaser binary to an immutable exact
+  version and grant `contents: write` only to the publish job. Build and validation
+  jobs retain `contents: read`.
+- **REQ-10.6** The current Make/Docker/native platform builds remain authoritative
+  until an embedded-Python parity test approves a replacement. GoReleaser Pro-only
+  capabilities MUST NOT be required by the OSS workflow.
+- **REQ-10.7** A failed GoReleaser publish MUST leave the tag and downloaded
+  artifacts intact so the workflow can be re-run through `workflow_dispatch`.

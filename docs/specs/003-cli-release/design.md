@@ -6,7 +6,7 @@
 |----------|---------|---------|
 | **Prepare release** | `workflow_dispatch` | Autofill → bump VERSION → finalize CHANGELOG → push `release/vX.Y.Z` |
 | **Release on merge** | `release/v*` PR merged to `main` or `release/**` | Push `vX.Y.Z` tag |
-| **Release** | Push tag `v*` | Embed builds, checksums, manifest, GitHub Release (title = tag; body = `CHANGELOG.md` `[VERSION]` section via `extract-changelog-section.py`) |
+| **Release** | Push tag `v*` | Embed builds, checksums, manifest, GoReleaser-published GitHub Release (title = tag; body = `CHANGELOG.md` `[VERSION]` section via `extract-changelog-section.py`) |
 | **Create release tag** | `workflow_dispatch` | Manual/dry-run tag (escape hatch) |
 
 ```mermaid
@@ -55,4 +55,44 @@ The `test` workflow job runs `make build-go test-cover-check vet`. On pull reque
 
 - **Prepare release:** `contents: write`
 - **Release on merge:** `contents: write`
+- **Release build/test jobs:** `contents: read`
+- **Release publish job:** `contents: write`
 - Concurrency group `release-tag` prevents double tag push
+
+## GoReleaser integration
+
+The release workflow uses an **OSS hybrid** design:
+
+1. Existing Make/Docker/native jobs remain the source of the three embedded-Python
+   binaries. They run on the target operating system and retain the current smoke
+   tests.
+2. The fan-in job generates `checksums.txt`, `manifest.json`, and curated
+   `release-notes.md` exactly as before.
+3. A version-pinned GoReleaser OSS invocation publishes those five pre-existing
+   files through `release.extra_files`.
+
+The GoReleaser configuration deliberately skips its build and checksum pipes. The
+existing artifacts are not GoReleaser-native build artifacts; treating them as
+`extra_files` is the OSS-compatible way to preserve the current multi-runner build.
+GoReleaser's prebuilt importer and split/merge pipeline are Pro-only.
+
+The GoReleaser dist directory is separate from `dist/`, because `release --clean`
+must not delete the downloaded release binaries before publishing them.
+
+```mermaid
+flowchart LR
+  Linux["Linux Docker build"] --> FanIn["Artifact fan-in"]
+  DarwinArm["macOS arm64 native build"] --> FanIn
+  DarwinAmd["macOS amd64 native build"] --> FanIn
+  FanIn --> Metadata["checksums + manifest + curated notes"]
+  Metadata --> GoReleaser["GoReleaser OSS publisher"]
+  GoReleaser --> GitHub["GitHub Release"]
+```
+
+### Why not replace the platform builds
+
+Release binaries contain a target-native relocatable CPython and `cisco-aibom`
+bundle. A normal cross-platform GoReleaser matrix cannot build those bundles from
+one runner. Moving build ownership into GoReleaser requires either a licensed
+prebuilt/split-merge pipeline or a separately validated redesign of the embedded
+Python build. ADR 0003 records this boundary.
