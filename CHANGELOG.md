@@ -8,10 +8,11 @@ to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### Changed
 
-- **Release publication now uses GoReleaser OSS** — the existing Docker/native
-  embedded-Python builds, artifact names, SHA-256 checksums, manifest, curated
-  release notes, and self-update contract are preserved while GoReleaser v2.17.1
-  creates and uploads the GitHub Release.
+- **Tagged releases now use GoReleaser Pro end to end** — target-native
+  split builds compile all three embedded-Python binaries, then GoReleaser
+  v2.17.1 merges the tested partials and owns raw artifact naming, SHA-256
+  checksums, manifest rendering, curated release notes, and GitHub publication.
+  The public artifact and self-update contracts remain unchanged.
 
 ## [0.1.5] - 2026-06-19
 

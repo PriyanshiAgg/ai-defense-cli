@@ -1,24 +1,53 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.17.1/www/docs/static/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.17.1/www/docs/static/schema-pro.json
 version: 2
 
 project_name: cisco-aid-cli
+dist: dist
 
-# Release binaries are produced by target-native jobs and downloaded to dist/.
-# Keep GoReleaser's cleanable working directory separate from those inputs.
-dist: .goreleaser-dist
+# Each target is built on its native runner and merged without rebuilding.
+partial:
+  by: target
 
-# Importing prebuilt artifacts into the GoReleaser lifecycle is Pro-only.
-# The OSS hybrid publishes the verified fan-in artifacts as release extra files.
 builds:
-  - id: platform-builds
-    skip: true
+  - id: embedded-python
+    main: .
+    binary: cisco-aid-cli
+    targets:
+      - linux_amd64
+      - darwin_amd64
+      - darwin_arm64
+    tags:
+      - embed_python
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/cisco-ai-defense/ai-defense-cli/internal/cli.version={{ .Version }}
+      - -X github.com/cisco-ai-defense/ai-defense-cli/internal/cli.commit={{ .ShortCommit }}
+    env:
+      - CGO_ENABLED=0
+
+# Publish raw binaries with the names consumed by install/self-update.
+archives:
+  - id: release-binaries
+    ids:
+      - embedded-python
+    formats:
+      - binary
+    name_template: cisco-aid-cli-{{ .Version }}-{{ .Os }}-{{ .Arch }}
 
 checksum:
-  disable: true
+  name_template: checksums.txt
+  algorithm: sha256
+  ids:
+    - release-binaries
 
-# Curated notes are supplied with --release-notes.
+source:
+  enabled: false
+
+# Curated notes are supplied to every split with --release-notes.
 changelog:
-  disable: false
+  disable: true
 
 release:
   github:
@@ -28,9 +57,9 @@ release:
   mode: replace
   make_latest: true
   replace_existing_artifacts: true
-  extra_files:
-    - glob: "./dist/cisco-aid-cli-{{ .Version }}-linux-amd64"
-    - glob: "./dist/cisco-aid-cli-{{ .Version }}-darwin-amd64"
-    - glob: "./dist/cisco-aid-cli-{{ .Version }}-darwin-arm64"
-    - glob: ./dist/checksums.txt
-    - glob: ./dist/manifest.json
+  include_meta: false
+  # Render only after split artifacts have been merged, so .Artifacts contains
+  # all three targets. The workflow downloads and validates the published file.
+  templated_extra_files:
+    - src: scripts/release-manifest.json.tmpl
+      dst: manifest.json

@@ -52,9 +52,14 @@ LDFLAGS := -s -w \
 version: ## Print VERSION and COMMIT (from VERSION file + git)
 	@printf 'VERSION=%s\nCOMMIT=%s\n' "$(VERSION)" "$(COMMIT)"
 
-goreleaser-check: ## Validate .goreleaser.yaml (requires GoReleaser v2.17.1)
+goreleaser-check: ## Validate .goreleaser.yaml (requires GoReleaser Pro v2.17.1; no key needed)
 	@command -v $(GORELEASER) >/dev/null || \
-		(echo "goreleaser not found — install v2.17.1 from https://goreleaser.com/install/" && exit 1)
+		(echo "goreleaser-pro not found — install v2.17.1 from https://goreleaser.com/getting-started/install/pro/" && exit 1)
+	@version_output="$$($(GORELEASER) --version 2>&1)"; \
+		printf '%s\n' "$$version_output" | grep -q 'goreleaser-pro:' || \
+			(echo "GoReleaser Pro is required" && exit 1); \
+		printf '%s\n' "$$version_output" | grep -q 'GitVersion:[[:space:]]*2\.17\.1$$' || \
+			(echo "GoReleaser Pro v2.17.1 is required" && exit 1)
 	$(GORELEASER) check
 
 help: ## Show targets

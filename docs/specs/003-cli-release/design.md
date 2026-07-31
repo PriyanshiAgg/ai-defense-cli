@@ -6,7 +6,7 @@
 |----------|---------|---------|
 | **Prepare release** | `workflow_dispatch` | Autofill → bump VERSION → finalize CHANGELOG → push `release/vX.Y.Z` |
 | **Release on merge** | `release/v*` PR merged to `main` or `release/**` | Push `vX.Y.Z` tag |
-| **Release** | Push tag `v*`, or `workflow_dispatch` with an existing exact SemVer tag | Embed builds, checksums, manifest, GoReleaser-published GitHub Release (title = tag; body = `CHANGELOG.md` `[VERSION]` section via `extract-changelog-section.py`) |
+| **Release** | Push tag `v*`, or `workflow_dispatch` with an existing exact SemVer tag | GoReleaser Pro split builds, checksums, manifest, and GitHub Release (title = tag; body = `CHANGELOG.md` `[VERSION]` section via `extract-changelog-section.py`) |
 | **Create release tag** | `workflow_dispatch` | Manual/dry-run tag (escape hatch) |
 
 ```mermaid
@@ -61,41 +61,63 @@ The `test` workflow job runs `make build-go test-cover-check vet`. On pull reque
 
 ## GoReleaser integration
 
-The release workflow uses an **OSS hybrid** design:
+The Release workflow uses a **GoReleaser Pro split/merge** design:
 
-1. Existing Make/Docker/native jobs remain the source of the three embedded-Python
-   binaries. They run on the target operating system and retain the current smoke
-   tests.
-2. The fan-in job generates `checksums.txt`, `manifest.json`, and curated
-   `release-notes.md` exactly as before.
-3. A version-pinned GoReleaser OSS invocation publishes those five pre-existing
-   files through `release.extra_files`.
+1. A target matrix runs `goreleaser release --split` on Linux amd64, macOS
+   amd64, and macOS arm64 runners. Each runner stages and verifies its
+   embedded-Python bundle before the secret-bearing GoReleaser step. GoReleaser
+   compiles the tagged source with `embed_python`; a following secret-free step
+   smoke-tests the resulting native binary and embedded analyzer.
+2. Each split job uploads its complete GoReleaser partial directory as a workflow
+   artifact. The merge job downloads those immutable partials; it does not rebuild.
+3. `goreleaser continue --merge` generates `checksums.txt`, renders
+   `manifest.json`, and publishes the three binaries and metadata to GitHub
+   Releases using the curated `CHANGELOG.md` version section.
 
-The GoReleaser configuration deliberately skips its build and checksum pipes. The
-existing artifacts are not GoReleaser-native build artifacts; treating them as
-`extra_files` is the OSS-compatible way to preserve the current multi-runner build.
-GoReleaser's prebuilt importer and split/merge pipeline are Pro-only.
+`partial.by: target` keeps the two macOS architectures independent. This is
+required because each binary embeds a CPython distribution that must execute on
+the target runner while `cisco-aibom` is installed. The workflow requires a
+repository Actions secret named `GORELEASER_KEY`; no license value is stored in
+the repository.
 
-The GoReleaser dist directory is separate from `dist/`, because `release --clean`
-must not delete the downloaded release binaries before publishing them.
+| Target | Runner | GoReleaser filter | Partial artifact |
+|--------|--------|-------------------|------------------|
+| `linux_amd64` | `ubuntu-latest` | `GGOOS=linux`, `GGOARCH=amd64` | `goreleaser-partial-<tag>-<commit>-linux-amd64` |
+| `darwin_amd64` | `macos-15-intel` | `GGOOS=darwin`, `GGOARCH=amd64` | `goreleaser-partial-<tag>-<commit>-darwin-amd64` |
+| `darwin_arm64` | `macos-15` | `GGOOS=darwin`, `GGOARCH=arm64` | `goreleaser-partial-<tag>-<commit>-darwin-arm64` |
+
+Every split and merge checkout uses `fetch-depth: 0`. Before compilation, the
+workflow verifies that the staged CPython executable matches the selected target.
+The bundle preparation and all repository/dependency code execute before
+`GORELEASER_KEY` is exposed. After compilation, a separate step without the key
+runs `make smoke-test-bin` plus `ai-bom analyze --help`; the latter extracts and
+executes the embedded interpreter.
+
+The exact release inventory is three raw, unarchived binaries plus
+`checksums.txt` and `manifest.json`; source archives and GoReleaser metadata
+assets are disabled. A post-publication parity check downloads the metadata and
+verifies the final basenames, the three SHA-256 checksum entries, and the existing
+manifest schema. A mismatch fails the release run for operator remediation.
+
 Manual recovery dispatches validate the input before checkout, accept only an
 exact `v<semver>` tag, and check out `refs/tags/<tag>` with persisted Git
-credentials disabled.
+credentials disabled. A same-run **Re-run failed jobs** operation reuses the
+successful immutable partial artifacts. A new `workflow_dispatch` deliberately
+rebuilds all three partials from the immutable tag; partials are named with tag,
+commit, and target and are never mixed across workflow runs. Split jobs have
+`contents: read`; only the merge/publish job receives `contents: write`.
+
+The GoReleaser Pro binary can run `goreleaser check` without a license. Pull
+requests, including forks, therefore validate the pinned Pro configuration
+without receiving secrets. Tagged release runs have an initial trusted job that
+installs the same Pro version, validates the configuration, and runs
+`goreleaser license-verify` before any platform build starts.
 
 ```mermaid
 flowchart LR
-  Linux["Linux Docker build"] --> FanIn["Artifact fan-in"]
-  DarwinArm["macOS arm64 native build"] --> FanIn
-  DarwinAmd["macOS amd64 native build"] --> FanIn
-  FanIn --> Metadata["checksums + manifest + curated notes"]
-  Metadata --> GoReleaser["GoReleaser OSS publisher"]
-  GoReleaser --> GitHub["GitHub Release"]
+  Linux["GoReleaser split: linux-amd64"] --> Merge["GoReleaser continue --merge"]
+  DarwinArm["GoReleaser split: darwin-arm64"] --> Merge
+  DarwinAmd["GoReleaser split: darwin-amd64"] --> Merge
+  Merge --> Metadata["checksums + manifest + curated notes"]
+  Metadata --> GitHub["GitHub Release"]
 ```
-
-### Why not replace the platform builds
-
-Release binaries contain a target-native relocatable CPython and `cisco-aibom`
-bundle. A normal cross-platform GoReleaser matrix cannot build those bundles from
-one runner. Moving build ownership into GoReleaser requires either a licensed
-prebuilt/split-merge pipeline or a separately validated redesign of the embedded
-Python build. ADR 0003 records this boundary.
