@@ -28,22 +28,40 @@ jobs:
       commit: ${{ steps.v.outputs.commit }}
       tag: ${{ steps.v.outputs.tag }}
     steps:
+      - name: Validate requested tag
+        id: requested-tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$DISPATCH_TAG"
+          else
+            tag="$PUSH_TAG"
+          fi
+          if [[ "$tag" == *$'\n'* || "$tag" == *$'\r'* ]]; then
+            echo "::error::Invalid tag: line breaks are not allowed"
+            exit 1
+          fi
+          semver_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
+          if [[ ! "$tag" =~ $semver_re ]]; then
+            echo "::error::Invalid tag: $tag (expected exact SemVer, e.g. v0.1.1)"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: refs/tags/${{ steps.requested-tag.outputs.tag }}
+          persist-credentials: false
 
       - name: Resolve version from tag
         id: v
+        env:
+          TAG: ${{ steps.requested-tag.outputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
-          else
-            tag="${GITHUB_REF_NAME}"
-          fi
-          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::error::Invalid tag: $tag (expected e.g. v0.1.1)"
-            exit 1
-          fi
+          tag="$TAG"
           version="${tag#v}"
           file_version="$(tr -d '[:space:]' < VERSION)"
           if [ "$file_version" != "$version" ]; then
@@ -74,7 +92,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.test.outputs.tag }}
+          ref: refs/tags/${{ needs.test.outputs.tag }}
+          persist-credentials: false
 
       - uses: actions/setup-go@v6
         with:
@@ -105,7 +124,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.test.outputs.tag }}
+          ref: refs/tags/${{ needs.test.outputs.tag }}
+          persist-credentials: false
 
       - uses: actions/setup-go@v6
         with:
@@ -136,7 +156,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.test.outputs.tag }}
+          ref: refs/tags/${{ needs.test.outputs.tag }}
+          persist-credentials: false
 
       - uses: actions/setup-go@v6
         with:
@@ -169,8 +190,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.test.outputs.tag }}
+          ref: refs/tags/${{ needs.test.outputs.tag }}
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/download-artifact@v8
         with:

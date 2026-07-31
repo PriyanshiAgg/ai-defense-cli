@@ -64,5 +64,6 @@ publishes those binaries plus `checksums.txt` and `manifest.json` through
 ```bash
 python3 scripts/autofill-changelog.py --ref main --dry-run
 ./scripts/prepare-release.sh patch
-goreleaser check
+# Requires the CI-pinned GoReleaser v2.17.1.
+make goreleaser-check
 ```

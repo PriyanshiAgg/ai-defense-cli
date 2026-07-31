@@ -6,7 +6,7 @@
 |----------|---------|---------|
 | **Prepare release** | `workflow_dispatch` | Autofill → bump VERSION → finalize CHANGELOG → push `release/vX.Y.Z` |
 | **Release on merge** | `release/v*` PR merged to `main` or `release/**` | Push `vX.Y.Z` tag |
-| **Release** | Push tag `v*` | Embed builds, checksums, manifest, GoReleaser-published GitHub Release (title = tag; body = `CHANGELOG.md` `[VERSION]` section via `extract-changelog-section.py`) |
+| **Release** | Push tag `v*`, or `workflow_dispatch` with an existing exact SemVer tag | Embed builds, checksums, manifest, GoReleaser-published GitHub Release (title = tag; body = `CHANGELOG.md` `[VERSION]` section via `extract-changelog-section.py`) |
 | **Create release tag** | `workflow_dispatch` | Manual/dry-run tag (escape hatch) |
 
 ```mermaid
@@ -78,6 +78,9 @@ GoReleaser's prebuilt importer and split/merge pipeline are Pro-only.
 
 The GoReleaser dist directory is separate from `dist/`, because `release --clean`
 must not delete the downloaded release binaries before publishing them.
+Manual recovery dispatches validate the input before checkout, accept only an
+exact `v<semver>` tag, and check out `refs/tags/<tag>` with persisted Git
+credentials disabled.
 
 ```mermaid
 flowchart LR
