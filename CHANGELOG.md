@@ -6,6 +6,19 @@ to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### Added
+
+- **Draft release promotion** — an approval-gated manual workflow validates and
+  publishes an existing stable-version draft as the latest GitHub Release without
+  rebuilding or replacing the QA-tested assets.
+
+### Changed
+
+- **Release automation is draft-first** — merged release PRs and direct `v*` tag
+  pushes now stage final-tag releases as drafts for authenticated internal QA;
+  the manual tag escape hatch defaults to draft creation with an explicit published
+  override.
+
 ## [0.1.5] - 2026-06-19
 
 ### Added
