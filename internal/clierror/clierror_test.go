@@ -78,14 +78,39 @@ func TestClassifyTransportError(t *testing.T) {
 }
 
 func TestClassifyPollTimeoutError(t *testing.T) {
-	err := &api.PollTimeoutError{ScanID: "scan-1", BudgetSecs: 300}
-	got := Classify(err)
-	if got.Code != CodeNetwork {
-		t.Fatalf("want CodeNetwork, got %d", got.Code)
-	}
-	if got.Hint == "" {
-		t.Fatal("expected remediation hint")
-	}
+	t.Run("model scan", func(t *testing.T) {
+		got := Classify(&api.PollTimeoutError{
+			ScanID:        "scan-1",
+			BudgetSecs:    600,
+			StatusCommand: "cisco-aid-cli model-scan info --scan-id scan-1",
+			BudgetEnvVars: []string{"AI_DEFENSE_RETRY_COUNT_FOR_SCANNING", "AI_DEFENSE_WAIT_TIME_SECS_SUCCESSIVE_SCAN_INFO_CHECK"},
+		})
+		if got.Code != CodeNetwork {
+			t.Fatalf("want CodeNetwork, got %d", got.Code)
+		}
+		for _, s := range []string{
+			"still running on the server and was not cancelled",
+			"cisco-aid-cli model-scan info --scan-id scan-1",
+			"AI_DEFENSE_RETRY_COUNT_FOR_SCANNING and/or AI_DEFENSE_WAIT_TIME_SECS_SUCCESSIVE_SCAN_INFO_CHECK",
+		} {
+			if !strings.Contains(got.Hint, s) {
+				t.Errorf("hint %q missing %q", got.Hint, s)
+			}
+		}
+		if strings.Contains(strings.ToLower(got.Hint), "re-run") {
+			t.Errorf("hint must not suggest re-running: %q", got.Hint)
+		}
+	})
+
+	t.Run("without status command keeps the existing hint", func(t *testing.T) {
+		got := Classify(&api.PollTimeoutError{ScanID: "scan-2", BudgetSecs: 300})
+		if got.Code != CodeNetwork {
+			t.Fatalf("want CodeNetwork, got %d", got.Code)
+		}
+		if !strings.Contains(got.Hint, "Increase the polling budget") {
+			t.Errorf("hint = %q, want the existing polling-budget hint", got.Hint)
+		}
+	})
 }
 
 func TestClassifyValidationError(t *testing.T) {

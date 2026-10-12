@@ -49,9 +49,13 @@ func (e *ValidationError) Error() string {
 
 // PollTimeoutError indicates a scan did not reach a terminal status within the
 // polling budget. Commands map this to exit code 4 (connectivity/timeout).
+// The scan keeps running server-side, so StatusCommand (how to check it) and
+// BudgetEnvVars (how to wait longer next time) drive the remediation hint.
 type PollTimeoutError struct {
-	ScanID     string
-	BudgetSecs int
+	ScanID        string
+	BudgetSecs    int
+	StatusCommand string
+	BudgetEnvVars []string
 }
 
 func (e *PollTimeoutError) Error() string {

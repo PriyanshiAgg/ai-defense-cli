@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -227,6 +228,95 @@ func TestDoRawPUT_UsesUploadHTTPClient(t *testing.T) {
 
 	if err := c.DoRawPUT("https://uploads.example.com/presigned", strings.NewReader("x"), 1); err != nil {
 		t.Fatalf("DoRawPUT() error = %v", err)
+	}
+}
+
+func TestDoRawPUTWithHeaders_ReturnsHeaders(t *testing.T) {
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		h := make(http.Header)
+		h.Set("ETag", `"abc"`)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("")), Header: h}, nil
+	})
+	c := NewBaseClient("k", NewConfig("https://example.cisco.com"))
+	c.UploadHTTPClient.Transport = transport
+
+	h, err := c.DoRawPUTWithHeaders(context.Background(), "https://uploads.example.com/part/1", strings.NewReader("x"), 1)
+	if err != nil {
+		t.Fatalf("DoRawPUTWithHeaders() error = %v", err)
+	}
+	if h.Get("ETag") != `"abc"` {
+		t.Fatalf("ETag = %q", h.Get("ETag"))
+	}
+}
+
+func TestDoRawPUTNoRedirect_ReturnsRedirectAsError(t *testing.T) {
+	calls := 0
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		h := make(http.Header)
+		h.Set("Location", "https://uploads.example.com/elsewhere")
+		return &http.Response{StatusCode: http.StatusTemporaryRedirect, Body: io.NopCloser(strings.NewReader("")), Header: h}, nil
+	})
+	c := NewBaseClient("k", NewConfig("https://example.cisco.com"))
+	c.UploadHTTPClient.Transport = transport
+
+	_, err := c.DoRawPUTNoRedirect(context.Background(), "https://uploads.example.com/part/1", strings.NewReader("x"), 1)
+	var apiErr *ApiError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusTemporaryRedirect {
+		t.Fatalf("error = %v, want 307 ApiError", err)
+	}
+	if calls != 1 {
+		t.Fatalf("transport calls = %d, want 1 (redirect must not be followed)", calls)
+	}
+	if c.UploadHTTPClient.CheckRedirect == nil {
+		t.Fatal("shared upload client must keep its redirect validation")
+	}
+}
+
+func TestNewUploadHTTPClient_PoolsConnectionsPerHost(t *testing.T) {
+	transport, ok := newUploadHTTPClient(5).Transport.(*http.Transport)
+	if !ok || transport.MaxIdleConnsPerHost != uploadMaxIdleConnsPerHost {
+		t.Fatalf("upload transport = %#v, want MaxIdleConnsPerHost %d", transport, uploadMaxIdleConnsPerHost)
+	}
+}
+
+func TestDoRawPUTWithHeaders_TransportErrorOmitsSignature(t *testing.T) {
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection reset by peer")
+	})
+	c := NewBaseClient("k", NewConfig("https://example.cisco.com"))
+	c.UploadHTTPClient.Transport = transport
+
+	_, err := c.DoRawPUTWithHeaders(context.Background(), "https://uploads.example.com/part/1?X-Amz-Signature=topsecret", strings.NewReader("x"), 1)
+	var transportErr *TransportError
+	if !errors.As(err, &transportErr) {
+		t.Fatalf("expected TransportError, got %T: %v", err, err)
+	}
+	if strings.Contains(err.Error(), "topsecret") {
+		t.Fatalf("transport error leaks presigned signature: %v", err)
+	}
+	if !strings.Contains(err.Error(), "connection reset by peer") {
+		t.Fatalf("transport error lost its cause: %v", err)
+	}
+}
+
+func TestUploadErrorMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"s3 xml", `<?xml version="1.0"?><Error><Code>SignatureDoesNotMatch</Code><Message>bad sig</Message><AWSAccessKeyId>AKIAEXAMPLE</AWSAccessKeyId><StringToSign>PUT...</StringToSign></Error>`, "SignatureDoesNotMatch: bad sig"},
+		{"code only", `<Error><Code>RequestExpired</Code></Error>`, "RequestExpired"},
+		{"plain text", "  service unavailable  ", "service unavailable"},
+		{"long plain text", strings.Repeat("x", maxUploadErrorMessage+10), strings.Repeat("x", maxUploadErrorMessage) + "…"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := uploadErrorMessage([]byte(tt.body)); got != tt.want {
+				t.Fatalf("uploadErrorMessage() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -32,6 +32,7 @@ package clierror
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/cisco-ai-defense/ai-defense-cli/api"
 )
@@ -170,12 +171,15 @@ func Classify(err error) *Error {
 	// Scan poll budget exhausted.
 	var pollErr *api.PollTimeoutError
 	if errors.As(err, &pollErr) {
-		return Network(
-			pollErr.Error(),
-			"Increase the polling budget via AI_DEFENSE_RETRY_COUNT_FOR_SCANNING and/or "+
-				"AI_DEFENSE_WAIT_TIME_SECS_SUCCESSIVE_SCAN_INFO_CHECK, then re-run.",
-			err,
-		)
+		if pollErr.StatusCommand == "" {
+			return Network(
+				pollErr.Error(),
+				"Increase the polling budget via AI_DEFENSE_RETRY_COUNT_FOR_SCANNING and/or "+
+					"AI_DEFENSE_WAIT_TIME_SECS_SUCCESSIVE_SCAN_INFO_CHECK, then re-run.",
+				err,
+			)
+		}
+		return Network(pollErr.Error(), pollTimeoutHint(pollErr), err)
 	}
 
 	// HTTP client transport failures (timeout, DNS, TLS, connection refused).
@@ -186,6 +190,19 @@ func Classify(err error) *Error {
 
 	// Fall back to uncategorized.
 	return &Error{Code: CodeUnexpected, Message: err.Error(), Cause: err}
+}
+
+// pollTimeoutHint never suggests re-running the scan command: that registers a
+// new scan and, for file scans, uploads the file again.
+func pollTimeoutHint(e *api.PollTimeoutError) string {
+	var b strings.Builder
+	b.WriteString("The scan is still running on the server and was not cancelled. ")
+	fmt.Fprintf(&b, "Check its result with: %s", e.StatusCommand)
+	b.WriteString(" (running the scan command again starts a new scan).")
+	if len(e.BudgetEnvVars) > 0 {
+		fmt.Fprintf(&b, " To wait longer next time, raise %s.", strings.Join(e.BudgetEnvVars, " and/or "))
+	}
+	return b.String()
 }
 
 func classifyAPIError(apiErr *api.ApiError) *Error {
