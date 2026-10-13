@@ -113,6 +113,76 @@ func TestClassifyPollTimeoutError(t *testing.T) {
 	})
 }
 
+func TestClassifyUploadError(t *testing.T) {
+	s3Denied := &api.ApiError{StatusCode: 403, Message: "AccessDenied: Access Denied"}
+	tests := []struct {
+		name      string
+		err       error
+		wantCode  int
+		wantInMsg []string
+		wantHint  string
+	}{
+		{
+			name:      "rejected part keeps part number",
+			err:       fmt.Errorf("failed to upload file: %w", &api.UploadError{Part: 3, Cause: s3Denied}),
+			wantCode:  CodeUnexpected,
+			wantInMsg: []string{"failed to upload file: multipart upload part 3 failed", "object store returned status 403: AccessDenied: Access Denied"},
+			wantHint:  hintUploadRejected,
+		},
+		{
+			name:      "exhausted transient failures",
+			err:       fmt.Errorf("failed to upload file: %w", &api.UploadError{Part: 1, Transient: true, Cause: &api.ApiError{StatusCode: 503, Message: "SlowDown"}}),
+			wantCode:  CodeNetwork,
+			wantInMsg: []string{"multipart upload part 1 failed", "status 503: SlowDown"},
+			wantHint:  hintUploadTransient,
+		},
+		{
+			name: "transport timeout",
+			err: &api.UploadError{Part: 2, Transient: true, Cause: &api.TransportError{
+				Method: "PUT", URL: "https://bucket.s3.amazonaws.com/p?X-Amz-Signature=fake-signature-value", Cause: context.DeadlineExceeded,
+			}},
+			wantCode:  CodeNetwork,
+			wantInMsg: []string{"multipart upload part 2 failed", "request to the object store timed out"},
+			wantHint:  hintUploadTransient,
+		},
+		{
+			name:      "single upload",
+			err:       &api.UploadError{Cause: &api.ApiError{StatusCode: 400, Message: "EntityTooLarge"}},
+			wantCode:  CodeUnexpected,
+			wantInMsg: []string{"file upload failed", "status 400: EntityTooLarge"},
+			wantHint:  hintUploadRejected,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Classify(tt.err)
+			if got.Code != tt.wantCode {
+				t.Fatalf("code = %d, want %d", got.Code, tt.wantCode)
+			}
+			for _, s := range tt.wantInMsg {
+				if !strings.Contains(got.Message, s) {
+					t.Errorf("message %q missing %q", got.Message, s)
+				}
+			}
+			if got.Hint != tt.wantHint {
+				t.Errorf("hint = %q, want %q", got.Hint, tt.wantHint)
+			}
+			if strings.Contains(got.Message, "API error") || strings.Contains(got.Hint, "--api-key") {
+				t.Errorf("object-store failure reported as an AI Defense API failure: %q / %q", got.Message, got.Hint)
+			}
+			if strings.Contains(got.Message, "fake-signature-value") {
+				t.Errorf("message leaks the presigned signature: %q", got.Message)
+			}
+		})
+	}
+
+	t.Run("AI Defense API 403 is still an auth failure", func(t *testing.T) {
+		if got := Classify(fmt.Errorf("failed to get multipart upload URLs: %w", s3Denied)); got.Code != CodeAuth {
+			t.Fatalf("code = %d, want %d", got.Code, CodeAuth)
+		}
+	})
+}
+
 func TestClassifyValidationError(t *testing.T) {
 	err := &api.ValidationError{Message: "bad input"}
 	got := Classify(err)

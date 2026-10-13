@@ -131,6 +131,59 @@ func TestTriggerCmd_InvalidUploadConcurrency(t *testing.T) {
 	}
 }
 
+func TestTriggerCmd_UploadConcurrencyIgnoredOutsideMultipart(t *testing.T) {
+	t.Setenv("AI_DEFENSE_WAIT_TIME_SECS_SUCCESSIVE_SCAN_INFO_CHECK", "0")
+	filePath := t.TempDir() + "/model.bin"
+	if err := os.WriteFile(filePath, []byte("0123456789abcdef"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"repository scan", []string{"--repo-url", "https://huggingface.co/org/model"}},
+		{"single-PUT file scan", []string{"--file-path", filePath, "--no-multipart"}},
+	}
+	for _, tt := range tests {
+		for _, n := range []string{"0", "33", "-4"} {
+			t.Run(tt.name+"/"+n, func(t *testing.T) {
+				var mu sync.Mutex
+				var triggered bool
+				cli := apitest.NewTestCLI(t, func(w http.ResponseWriter, r *http.Request) {
+					mu.Lock()
+					defer mu.Unlock()
+					p := r.URL.Path
+					switch {
+					case strings.HasSuffix(p, "/scans/register"):
+						w.Write([]byte(`{"scan_id":"scan-1"}`))
+					case strings.HasSuffix(p, "/scans/scan-1/validate_url"):
+						w.Write([]byte(`{"is_accessible":true}`))
+					case strings.HasSuffix(p, "/scans/scan-1/objects"):
+						w.Write([]byte(`{"object_id":"obj-1","upload_url":"https://uploads.example.com/single"}`))
+					case r.Method == http.MethodPut && p == "/single":
+					case strings.HasSuffix(p, "/scans/scan-1/run"):
+						triggered = true
+					case r.Method == http.MethodGet && strings.HasSuffix(p, "/scans/scan-1"):
+						w.Write([]byte(`{"scan_status_info":{"scan_id":"scan-1","status":"COMPLETED"}}`))
+					default:
+						t.Errorf("unexpected %s %s", r.Method, p)
+					}
+				})
+
+				args := append([]string{"trigger", "--fail-on", "none", "--upload-concurrency", n}, tt.args...)
+				captureStdout(t, func() {
+					if err := execCmd(t, NewCmd(cli), args...); err != nil {
+						t.Fatalf("trigger: %v (exit %d)", err, clierror.Classify(err).Code)
+					}
+				})
+				if !triggered {
+					t.Fatal("expected the scan to run")
+				}
+			})
+		}
+	}
+}
+
 func TestTriggerCmd_UploadModes(t *testing.T) {
 	tests := []struct {
 		name          string

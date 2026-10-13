@@ -59,19 +59,6 @@ var (
 	errEmptyFile              = errors.New("file must not be empty")
 )
 
-// partUploadError reports a failed part without its cause in the message
-// (parity with the Python SDK); Unwrap keeps the cause for exit-code mapping.
-type partUploadError struct {
-	number int
-	cause  error
-}
-
-func (e *partUploadError) Error() string {
-	return fmt.Sprintf("multipart upload part %d failed", e.number)
-}
-
-func (e *partUploadError) Unwrap() error { return e.cause }
-
 // ProgressFunc receives the cumulative uploaded bytes and the total file size.
 type ProgressFunc func(uploaded, total int64)
 
@@ -80,6 +67,7 @@ type UploadOptions struct {
 	// DisableMultipart forces a single presigned PUT of the whole file.
 	DisableMultipart bool
 	// Concurrency is the number of parts uploaded in parallel (0 = default).
+	// Ignored, and not validated, when DisableMultipart is set.
 	Concurrency int
 	// Progress, if set, is called as bytes are uploaded. Calls are serialized.
 	Progress ProgressFunc
@@ -95,7 +83,12 @@ func ValidateUploadConcurrency(n int) error {
 	return nil
 }
 
+// concurrency resolves the multipart concurrency; it returns 0 and no error
+// when multipart is disabled.
 func (o UploadOptions) concurrency() (int, error) {
+	if o.DisableMultipart {
+		return 0, nil
+	}
 	if o.Concurrency == 0 {
 		return DefaultUploadConcurrency, nil
 	}
@@ -196,7 +189,21 @@ func (c *Client) uploadWholeFile(uploadURL, filePath string, size int64, progres
 		progress(0, size)
 		body = &progressReader{r: f, total: size, progress: progress}
 	}
-	return c.base.DoRawPUT(uploadURL, body, size)
+	if err := c.base.DoRawPUT(uploadURL, body, size); err != nil {
+		return asUploadError(0, err)
+	}
+	return nil
+}
+
+// asUploadError marks object-store responses and transport failures as
+// UploadError; other errors (e.g. URL validation) are returned unchanged.
+func asUploadError(part int, err error) error {
+	var apiErr *api.ApiError
+	var transportErr *api.TransportError
+	if errors.As(err, &apiErr) || errors.As(err, &transportErr) || part > 0 {
+		return &api.UploadError{Part: part, Transient: isRetryablePartError(err), Cause: err}
+	}
+	return err
 }
 
 type progressReader struct {
@@ -231,6 +238,10 @@ type multipartUpload struct {
 	progress    ProgressFunc
 
 	file *os.File
+
+	// refreshMu serializes single-part URL refreshes on retry (as the SDK's
+	// refresh lock does), so a batch of expired URLs does not burst the API.
+	refreshMu sync.Mutex
 
 	progressMu sync.Mutex
 	uploaded   int64
@@ -386,19 +397,31 @@ func (m *multipartUpload) uploadPart(ctx context.Context, job partJob) (string, 
 			return etag, nil
 		}
 		if attempt+1 >= maxPartUploadAttempts || !isRetryablePartError(err) || ctx.Err() != nil {
-			return "", &partUploadError{number: job.number, cause: err}
+			return "", asUploadError(job.number, err)
 		}
 		select {
 		case <-time.After(partRetryBackoff << attempt):
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
-		urls, err := m.partURLs(job.number, job.number)
-		if err != nil {
+		if uploadURL, err = m.refreshPartURL(ctx, job.number); err != nil {
 			return "", err
 		}
-		uploadURL = urls[job.number]
 	}
+}
+
+// refreshPartURL fetches a fresh URL for one part, one refresh at a time.
+func (m *multipartUpload) refreshPartURL(ctx context.Context, number int) (string, error) {
+	m.refreshMu.Lock()
+	defer m.refreshMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	urls, err := m.partURLs(number, number)
+	if err != nil {
+		return "", err
+	}
+	return urls[number], nil
 }
 
 func (m *multipartUpload) putPart(ctx context.Context, number int, uploadURL string) (string, error) {

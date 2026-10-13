@@ -27,6 +27,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -198,29 +199,42 @@ func (c *BaseClient) doRawPUT(ctx context.Context, client *http.Client, uploadUR
 const (
 	// maxUploadErrorBody caps how much of an upload error body is read into memory.
 	maxUploadErrorBody = 64 << 10
-	// maxUploadErrorMessage caps a non-XML upload error body echoed to the user.
-	maxUploadErrorMessage = 512
+	// maxUploadErrorField caps the S3 Code and Message echoed to the user.
+	maxUploadErrorField = 512
 )
 
-// uploadErrorMessage reduces an object-store error body to its code and
+// presignedQueryValue matches presigned-URL credential parameters and their
+// values (SigV4 X-Amz-*, SigV2 AWSAccessKeyId/Signature, security tokens).
+var presignedQueryValue = regexp.MustCompile(`(?i)(x-amz-[a-z-]+|awsaccesskeyid|signature|credential|security-token)=[^&\s"'<>]*`)
+
+// uploadErrorMessage reduces an object-store error body to its S3 code and
 // message. Full S3 error documents can echo the access key ID and the string
-// to sign, which must not reach the terminal or CI logs.
+// to sign, and other bodies (proxy or WAF pages) can reflect the presigned
+// URL, so nothing else from the body reaches the terminal or CI logs.
 func uploadErrorMessage(body []byte) string {
 	var s3Err struct {
 		Code    string `xml:"Code"`
 		Message string `xml:"Message"`
 	}
-	if xml.Unmarshal(body, &s3Err) == nil && s3Err.Code != "" {
-		if s3Err.Message == "" {
-			return s3Err.Code
+	if xml.Unmarshal(body, &s3Err) != nil || s3Err.Code == "" {
+		if len(body) == 0 {
+			return ""
 		}
-		return s3Err.Code + ": " + s3Err.Message
+		return fmt.Sprintf("unexpected response from object store (%d bytes, not shown)", len(body))
 	}
-	msg := strings.TrimSpace(string(body))
-	if len(msg) > maxUploadErrorMessage {
-		msg = msg[:maxUploadErrorMessage] + "…"
+	msg := redactUploadErrorField(s3Err.Code)
+	if m := redactUploadErrorField(s3Err.Message); m != "" {
+		msg += ": " + m
 	}
 	return msg
+}
+
+func redactUploadErrorField(s string) string {
+	s = presignedQueryValue.ReplaceAllString(strings.TrimSpace(s), "$1=REDACTED")
+	if len(s) > maxUploadErrorField {
+		s = s[:maxUploadErrorField] + "…"
+	}
+	return s
 }
 
 // withoutURL drops the *url.Error wrapper, whose message embeds the full

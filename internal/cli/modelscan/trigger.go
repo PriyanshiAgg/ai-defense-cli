@@ -63,8 +63,10 @@ Examples:
 			if err := resultOpts.Validate(); err != nil {
 				return err
 			}
-			if err := modelscansdk.ValidateUploadConcurrency(uploadConcurrency); err != nil {
-				return clierror.Usage(err.Error())
+			if filePath != "" && !noMultipart {
+				if err := modelscansdk.ValidateUploadConcurrency(uploadConcurrency); err != nil {
+					return clierror.Usage(err.Error())
+				}
 			}
 
 			apiKey, baseURL, err := cli.ResolveAuth()

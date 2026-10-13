@@ -52,11 +52,15 @@ Requirements use EARS phrasing.
   HTTP 5xx, or HTTP 400/403 whose body contains `ExpiredToken` or
   `RequestExpired`, the CLI shall request a fresh URL for that part and retry,
   up to **3** attempts in total, with exponential backoff starting at 0.5 s.
+- **REQ-03.1a** When retries request fresh part URLs, the CLI shall send at
+  most one single-part URL refresh at a time (SDK 2.2.0 refresh lock), so a
+  batch of expired URLs does not send a burst of `multipart/part-urls` calls.
 - **REQ-03.2** If a part upload fails with any other error, or exhausts its
   attempts, the CLI shall stop scheduling new parts, call `multipart/abort`
-  (best effort), and return "multipart upload part N failed" without the
-  underlying cause in the message (SDK 2.2.0 parity). The cause shall stay
-  attached to the error so the exit code still reflects it (REQ-03.4).
+  (best effort), and return "multipart upload part N failed" (SDK 2.2.0
+  parity). The error shall be an `api.UploadError` that records the part
+  number, whether the last failure was transient (REQ-03.1 conditions), and
+  the object-store cause.
 - **REQ-03.2a** If `multipart/abort` fails, the CLI shall ignore that failure
   without writing any output (as `CleanupScanData` does) and return the
   original upload error.
@@ -64,8 +68,18 @@ Requirements use EARS phrasing.
   longer than 2048 characters, the CLI shall treat the part as failed
   (non-retryable).
 - **REQ-03.4** If the upload fails, the CLI shall delete the scan
-  (existing `CleanupScanData` behaviour) and exit with the code that
-  `clierror.Classify` assigns to the underlying error (no new exit codes).
+  (existing `CleanupScanData` behaviour). No new exit codes are added.
+- **REQ-03.4a** If an upload to the object store fails (a multipart part, or
+  the whole file with `--no-multipart`), the CLI shall classify it as an upload
+  failure, not as an AI Defense API failure: exit **4** with a
+  connectivity hint if the last failure was transient, otherwise exit **1**
+  with a hint that the object store rejected the upload. The message shall
+  keep "multipart upload part N failed" (or "file upload failed") followed by
+  the sanitized object-store status and S3 code, and shall not show the
+  API-key hint.
+- **REQ-03.4b** If a call to the AI Defense API itself fails during the
+  upload (create object, part URLs, complete), the CLI shall keep the existing
+  API error classification.
 - **REQ-03.5** If a part URL is not HTTPS or its host does not end in
   `.amazonaws.com` or `.amazonaws.com.cn`, the CLI shall fail the part
   (non-retryable) without sending it. Part PUTs shall not follow redirects; a
@@ -74,17 +88,26 @@ Requirements use EARS phrasing.
 - **REQ-03.6** If a presigned upload request fails, the CLI shall not include
   the presigned URL query string (signature) or the raw object-store error
   document in the error message; it shall show only the S3 error `Code` and
-  `Message` (or a truncated non-XML body). Applies to single and multipart
-  uploads.
+  `Message`. Applies to single and multipart uploads.
+- **REQ-03.6a** If an upload error body is not an S3 XML error document (for
+  example a proxy or WAF page that reflects the request URI), the CLI shall
+  show only "unexpected response from object store (N bytes, not shown)" and
+  none of the body.
+- **REQ-03.6b** When the CLI shows an S3 `Code` or `Message`, it shall replace
+  the values of presigned-URL parameters (`X-Amz-*`, `AWSAccessKeyId`,
+  `Signature`, `Credential`, `Security-Token`) with `REDACTED`.
 
 ### REQ-04 — Flags
 
 - **REQ-04.1** `model-scan trigger` shall accept `--no-multipart`; where it is
   set, the CLI shall use the single presigned PUT path.
 - **REQ-04.2** `model-scan trigger` shall accept `--upload-concurrency <n>`.
-  If `n` is outside 1–32, the CLI shall exit **2** before making any API call.
+  Where `--file-path` is set without `--no-multipart`, if `n` is outside 1–32,
+  the CLI shall exit **2** before making any API call.
 - **REQ-04.3** `--no-multipart` and `--upload-concurrency` shall have no effect
-  on `--repo-url` scans.
+  on `--repo-url` scans, and `--upload-concurrency` shall have no effect with
+  `--no-multipart`: in those modes the CLI shall not validate or use its value
+  (SDK 2.2.0 validates concurrency only on the multipart path).
 
 ### REQ-05 — Upload timeouts
 

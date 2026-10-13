@@ -175,8 +175,8 @@ Report findings without failing the step: `--fail-on none --block-on none`.
 | `trigger` | Success, policy pass | 0 | Raw API JSON on stdout |
 | `trigger` | Missing `file-path` / `repo-url` / both set | 2 |  |
 | `trigger` | Invalid `--fail-on`, `--block-on`, `--output` | 2 |  |
-| `trigger` | Invalid `--upload-concurrency` (outside 1-32) | 2 | Checked before any API call |
-| `trigger` | Upload failure (multipart part or single PUT) | 1 / 2 / 3 / 4 | Mapped from the underlying error; scan is deleted |
+| `trigger` | Invalid `--upload-concurrency` (outside 1-32) | 2 | File scans in multipart mode only; checked before any API call |
+| `trigger` | Upload to object store failed (multipart part or single PUT) | 1 / 4 | 4 if transient (network, 429, 5xx, expired URL), else 1; scan is deleted |
 | `trigger` | Auth failure | 3 |  |
 | `trigger` | File missing, empty, or unsupported type | 1 |  |
 | `trigger` | Repo not accessible (API validation) | 2 |  |

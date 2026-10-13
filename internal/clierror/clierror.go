@@ -136,9 +136,13 @@ const (
 		"and a valid --base-url (a *.cisco.com host)."
 	hintNetwork = "Check network connectivity and the --base-url. If you are on a corporate network, ensure the VPN is " +
 		"connected and the Cisco CA is trusted (e.g. set SSL_CERT_FILE to your CA bundle)."
-	hintRateLimited = "The service is rate-limiting or temporarily unavailable. Retry with backoff."
-	hintNotFound    = "Verify the id is correct and that it belongs to your tenant."
-	hintBadRequest  = "The request was rejected as invalid. Check the command arguments and try again."
+	hintRateLimited     = "The service is rate-limiting or temporarily unavailable. Retry with backoff."
+	hintNotFound        = "Verify the id is correct and that it belongs to your tenant."
+	hintBadRequest      = "The request was rejected as invalid. Check the command arguments and try again."
+	hintUploadTransient = "Uploading to the object store kept failing. Check network connectivity and any " +
+		"proxy between you and AWS S3, then run the command again."
+	hintUploadRejected = "The object store rejected the upload. This is not an AI Defense API key problem; " +
+		"run the command again, and contact support if it keeps failing."
 )
 
 // Classify maps an arbitrary error returned by a command into a typed *Error
@@ -154,6 +158,13 @@ func Classify(err error) *Error {
 	var typed *Error
 	if errors.As(err, &typed) {
 		return typed
+	}
+
+	// Object-store upload failures wrap S3 ApiErrors/TransportErrors, so they
+	// must be classified before the generic API checks below.
+	var uploadErr *api.UploadError
+	if errors.As(err, &uploadErr) {
+		return classifyUploadError(err, uploadErr)
 	}
 
 	// Server-side API errors carry an HTTP status we can map precisely.
@@ -203,6 +214,19 @@ func pollTimeoutHint(e *api.PollTimeoutError) string {
 		fmt.Fprintf(&b, " To wait longer next time, raise %s.", strings.Join(e.BudgetEnvVars, " and/or "))
 	}
 	return b.String()
+}
+
+// classifyUploadError keeps the wrapped message (e.g. "failed to upload file:
+// multipart upload part 3 failed") and appends the sanitized object-store detail.
+func classifyUploadError(err error, uploadErr *api.UploadError) *Error {
+	msg := err.Error()
+	if detail := uploadErr.Detail(); detail != "" {
+		msg += " (" + detail + ")"
+	}
+	if uploadErr.Transient {
+		return Network(msg, hintUploadTransient, err)
+	}
+	return &Error{Code: CodeUnexpected, Message: msg, Hint: hintUploadRejected, Cause: err}
 }
 
 func classifyAPIError(apiErr *api.ApiError) *Error {

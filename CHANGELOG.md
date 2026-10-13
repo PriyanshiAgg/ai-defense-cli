@@ -43,13 +43,24 @@ to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
   empty`, exit 1), matching the SDK.
 - **No silent single-PUT fallback** — if the service does not offer multipart,
   the default upload fails; pass `--no-multipart` for such servers.
-- A failed multipart part reports `multipart upload part N failed` (SDK
-  wording); the exit code still reflects the underlying error.
+- **Upload failures are reported as upload failures** — a failed multipart
+  part reports `multipart upload part N failed` (SDK wording), and a failed
+  `--no-multipart` upload reports `file upload failed`, each followed by the
+  object store's status and S3 error code. They exit 4 when the object store
+  kept failing transiently (network, throttling, server errors) and 1
+  otherwise, instead of being mistaken for AI Defense API errors (for example
+  an S3 403 exiting 3 with API-key advice).
+- `--upload-concurrency` is only checked for file scans in multipart mode; it
+  is ignored (not rejected) with `--repo-url` or `--no-multipart`.
 
 ### Security
 - Presigned upload errors no longer echo the URL signature or the raw S3 error
   document (which can include the access key ID and string to sign); only the
-  S3 error code and message are shown.
+  S3 error code and message are shown, with any presigned-URL parameter values
+  redacted. Other error bodies (for example a proxy page that reflects the
+  request URL) are not shown at all.
+- When several multipart part URLs expire together, fresh URLs are requested
+  one at a time, as in the SDK, instead of in a burst.
 - Multipart part URLs must be HTTPS on `*.amazonaws.com` /
   `*.amazonaws.com.cn`, and part uploads do not follow redirects.
 

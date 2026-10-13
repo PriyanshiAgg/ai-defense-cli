@@ -71,6 +71,8 @@ type fakeMultipartService struct {
 	beforePut func(part int)
 	// scanRunning keeps the scan status RUNNING so polling times out.
 	scanRunning bool
+	// onPartURLs runs, without the lock held, around each part-urls request.
+	onPartURLs func() (done func())
 
 	mu             sync.Mutex
 	createReqs     []CreateScanObjectRequest
@@ -92,6 +94,9 @@ func (f *fakeMultipartService) handler(w http.ResponseWriter, r *http.Request) {
 	if f.beforePut != nil && r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/part/") {
 		n, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/part/"))
 		f.beforePut(n)
+	}
+	if f.onPartURLs != nil && strings.HasSuffix(r.URL.Path, "/multipart/part-urls") {
+		defer f.onPartURLs()()
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -339,6 +344,10 @@ func TestUploadFileWithOptions_GivesUpAfterMaxAttempts(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("error = %v, want wrapped 500 ApiError", err)
 	}
+	var uploadErr *api.UploadError
+	if !errors.As(err, &uploadErr) || uploadErr.Part != 1 || !uploadErr.Transient {
+		t.Fatalf("error = %#v, want transient UploadError for part 1", uploadErr)
+	}
 	if f.attempts[1] != maxPartUploadAttempts {
 		t.Fatalf("part 1 attempts = %d, want %d", f.attempts[1], maxPartUploadAttempts)
 	}
@@ -392,6 +401,10 @@ func TestUploadFileWithOptions_NonRetryableFailures(t *testing.T) {
 			}
 			if tt.wantCause != nil && !errors.Is(err, tt.wantCause) {
 				t.Fatalf("error cause = %v, want %v", errors.Unwrap(err), tt.wantCause)
+			}
+			var uploadErr *api.UploadError
+			if !errors.As(err, &uploadErr) || uploadErr.Part != 1 || uploadErr.Transient {
+				t.Fatalf("error = %#v, want non-transient UploadError for part 1", uploadErr)
 			}
 			var apiErr *api.ApiError
 			if tt.wantStatus != 0 && (!errors.As(err, &apiErr) || apiErr.StatusCode != tt.wantStatus) {
@@ -553,8 +566,8 @@ func TestUploadFileWithOptions_AbortFailureKeepsUploadError(t *testing.T) {
 	path, _ := writeTestFile(t, 30)
 
 	err := c.UploadFileWithOptions(testScanID, path, UploadOptions{Concurrency: 1})
-	var partErr *partUploadError
-	if !errors.As(err, &partErr) || partErr.number != 1 {
+	var uploadErr *api.UploadError
+	if !errors.As(err, &uploadErr) || uploadErr.Part != 1 {
 		t.Fatalf("error = %v, want the part 1 upload error", err)
 	}
 	if !f.aborted {
@@ -596,6 +609,106 @@ func TestUploadFileWithOptions_InvalidConcurrency(t *testing.T) {
 	}
 	if len(f.createReqs) != 0 {
 		t.Fatal("no API call expected for invalid concurrency")
+	}
+}
+
+func TestUploadOptions_ConcurrencyIgnoredWhenMultipartDisabled(t *testing.T) {
+	t.Setenv(envWaitSecs, "0")
+	t.Setenv(envRetryCount, "")
+	for _, n := range []int{-1, 0, MaxUploadConcurrency + 1} {
+		t.Run(strconv.Itoa(n), func(t *testing.T) {
+			f, c := newFakeMultipart(t, 10)
+			path, data := writeTestFile(t, 30)
+			opts := UploadOptions{DisableMultipart: true, Concurrency: n}
+
+			if err := c.UploadFileWithOptions(testScanID, path, opts); err != nil {
+				t.Fatalf("UploadFileWithOptions: %v", err)
+			}
+			if !bytes.Equal(f.singlePut, data) {
+				t.Fatal("expected the whole file in a single PUT")
+			}
+			if _, err := c.ScanFileWithOptions(path, opts); err != nil {
+				t.Fatalf("ScanFileWithOptions: %v", err)
+			}
+		})
+	}
+}
+
+func TestUploadFileWithOptions_SinglePutFailureIsUploadError(t *testing.T) {
+	tests := []struct {
+		name          string
+		status        int
+		wantTransient bool
+	}{
+		{"rejected", http.StatusForbidden, false},
+		{"server error", http.StatusServiceUnavailable, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				path := strings.TrimPrefix(r.URL.Path, "/api/ai-defense/v1/")
+				switch {
+				case r.Method == http.MethodPost && path == "scans/"+testScanID+"/objects":
+					fmt.Fprintf(w, `{"object_id":%q,"upload_url":"https://%s/single"}`, testObjectID, testS3Host)
+				case r.Method == http.MethodPut && r.URL.Path == "/single":
+					w.WriteHeader(tt.status)
+					io.WriteString(w, "<Error><Code>Denied</Code></Error>")
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			target, _ := url.Parse(srv.URL)
+			cfg := api.NewConfig("https://test.cisco.com")
+			cfg.HTTPClient = &http.Client{Transport: &rewriteTransport{target: target}}
+			c := NewClient("test-key", cfg)
+			path, _ := writeTestFile(t, 30)
+
+			err := c.UploadFileWithOptions(testScanID, path, UploadOptions{DisableMultipart: true})
+			var uploadErr *api.UploadError
+			if !errors.As(err, &uploadErr) || uploadErr.Part != 0 || uploadErr.Transient != tt.wantTransient {
+				t.Fatalf("error = %v (%#v), want UploadError part 0 transient=%v", err, uploadErr, tt.wantTransient)
+			}
+		})
+	}
+}
+
+func TestUploadFileWithOptions_SerializesURLRefreshes(t *testing.T) {
+	f, c := newFakeMultipart(t, 1)
+	const parts = partURLBatchSize
+	f.failPart = func(part, attempt int) (int, string, *string) {
+		if attempt == 1 {
+			return http.StatusForbidden, "<Error><Code>ExpiredToken</Code></Error>", nil
+		}
+		return 0, "", nil
+	}
+	var inFlight, maxInFlight int32
+	var refreshMu sync.Mutex
+	f.onPartURLs = func() func() {
+		refreshMu.Lock()
+		inFlight++
+		maxInFlight = max(maxInFlight, inFlight)
+		refreshMu.Unlock()
+		time.Sleep(2 * time.Millisecond) // widen the window for overlapping refreshes
+		return func() {
+			refreshMu.Lock()
+			inFlight--
+			refreshMu.Unlock()
+		}
+	}
+	path, data := writeTestFile(t, parts)
+
+	if err := c.UploadFileWithOptions(testScanID, path, UploadOptions{Concurrency: MaxUploadConcurrency}); err != nil {
+		t.Fatalf("UploadFileWithOptions: %v", err)
+	}
+	if got := len(f.partURLBatch); got != 1+parts {
+		t.Fatalf("part-urls calls = %d, want 1 batch + %d single-part refreshes", got, parts)
+	}
+	if maxInFlight != 1 {
+		t.Fatalf("concurrent part-urls requests = %d, want refreshes serialized", maxInFlight)
+	}
+	if !bytes.Equal(f.reassemble(), data) {
+		t.Fatal("reassembled parts do not match the file")
 	}
 }
 

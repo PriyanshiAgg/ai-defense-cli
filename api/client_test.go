@@ -308,8 +308,9 @@ func TestUploadErrorMessage(t *testing.T) {
 	}{
 		{"s3 xml", `<?xml version="1.0"?><Error><Code>SignatureDoesNotMatch</Code><Message>bad sig</Message><AWSAccessKeyId>AKIAEXAMPLE</AWSAccessKeyId><StringToSign>PUT...</StringToSign></Error>`, "SignatureDoesNotMatch: bad sig"},
 		{"code only", `<Error><Code>RequestExpired</Code></Error>`, "RequestExpired"},
-		{"plain text", "  service unavailable  ", "service unavailable"},
-		{"long plain text", strings.Repeat("x", maxUploadErrorMessage+10), strings.Repeat("x", maxUploadErrorMessage) + "…"},
+		{"empty body", "", ""},
+		{"plain text is not echoed", "  service unavailable  ", "unexpected response from object store (23 bytes, not shown)"},
+		{"long message", `<Error><Code>X</Code><Message>` + strings.Repeat("m", maxUploadErrorField+10) + `</Message></Error>`, "X: " + strings.Repeat("m", maxUploadErrorField) + "…"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -317,6 +318,68 @@ func TestUploadErrorMessage(t *testing.T) {
 				t.Fatalf("uploadErrorMessage() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestUploadErrorMessage_ReflectedPresignedURL(t *testing.T) {
+	const reflected = "/bucket/model.bin?X-Amz-Algorithm=AWS4-HMAC-SHA256" +
+		"&X-Amz-Credential=test-credential-placeholder%2F20260101%2Fus-west-2%2Fs3%2Faws4_request" +
+		"&X-Amz-Security-Token=test-session-token-placeholder" +
+		"&X-Amz-Signature=fake-signature-value"
+	secrets := []string{"test-credential-placeholder", "test-session-token-placeholder", "fake-signature-value"}
+	s3XML := "<Error><Code>AccessDenied</Code><Message>denied " + strings.ReplaceAll(reflected, "&", "&amp;") + "</Message></Error>"
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"html proxy page", "<html><body><h1>Request blocked</h1><p>URI: " + reflected + "</p></body></html>"},
+		{"plain text WAF", "Forbidden: PUT " + reflected},
+		{"json gateway", `{"error":"denied","path":"` + reflected + `"}`},
+		{"s3-shaped xml", s3XML},
+		{"sigv2 query", "<Error><Code>AccessDenied</Code><Message>?AWSAccessKeyId=test-credential-placeholder&amp;Signature=fake-signature-value</Message></Error>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := uploadErrorMessage([]byte(tt.body))
+			for _, s := range secrets {
+				if strings.Contains(got, s) {
+					t.Fatalf("uploadErrorMessage() leaks %q: %q", s, got)
+				}
+			}
+		})
+	}
+
+	got := uploadErrorMessage([]byte(s3XML))
+	if !strings.HasPrefix(got, "AccessDenied: denied") || !strings.Contains(got, "X-Amz-Signature=REDACTED") {
+		t.Fatalf("S3 code and message should survive with values redacted, got %q", got)
+	}
+}
+
+func TestDoRawPUT_ReflectedURLBodyNotEchoed(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, "<html>Blocked "+r.URL.RequestURI()+"</html>")
+	}))
+	defer srv.Close()
+
+	base := srv.Client().Transport
+	srvHost := strings.TrimPrefix(srv.URL, "https://")
+	c := NewBaseClient("k", NewConfig("https://example.cisco.com"))
+	c.UploadHTTPClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		req = req.Clone(req.Context())
+		req.URL.Host = srvHost
+		return base.RoundTrip(req)
+	})}
+
+	err := c.DoRawPUT("https://uploads.example.com/part/1?X-Amz-Signature=fake-signature-value", strings.NewReader("x"), 1)
+	var apiErr *ApiError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusForbidden {
+		t.Fatalf("error = %v, want 403 ApiError", err)
+	}
+	if strings.Contains(err.Error(), "fake-signature-value") {
+		t.Fatalf("upload error echoes the presigned signature: %v", err)
 	}
 }
 
